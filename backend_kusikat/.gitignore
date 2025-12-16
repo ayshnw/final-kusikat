@@ -1,0 +1,54 @@
+# === Environment & Secrets ===
+.env
+.env.*
+!.env.example          # ← contoh struktur, BOLEH di-commit
+secrets.json
+config.local.json
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment (pilih salah satu yang kamu pakai)
+venv/
+.venv/
+ENV/
+
+# === Dependency management ===
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+requirements.txt.lock   # ← jika pakai pip-compile, lock file bisa di-commit; tapi ini opsional
+
+# === Database files (lokal) ===
+*.sqlite3
+*.db
+*.dump
+
+# === Logs ===
+logs/
+*.log
+
+# === IDE / Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# === Testing & Coverage ===
+.coverage
+htmlcov/
+.pytest_cache/
+.coverage.*
+
+# === FastAPI / ASGI ===
+*.pid
+*.sock
+
+# === Build & Packaging ===
+build/
+dist/
+*.egg-info/

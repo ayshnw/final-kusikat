@@ -81,7 +81,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${token}`, // [PERBAIKAN 2]
         },
         body: JSON.stringify({ phone_number: newPhone }),
       });
@@ -137,7 +137,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${token}`, // [PERBAIKAN 3]
           },
           body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
         });
@@ -147,7 +147,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${token}`, // [PERBAIKAN 4]
           },
           body: JSON.stringify({ new_password: tempPassword }),
         });

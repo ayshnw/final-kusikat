@@ -1,20 +1,26 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import bcrypt
 from jose import JWTError, jwt
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta, timezone
 import os
-from dotenv import load_dotenv
 import smtplib
 import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from app.database import SessionLocal, engine, Base
-from app.models import User, PasswordResetToken
+from contextlib import asynccontextmanager
+
+from app.routes.ai import router as ai_router
 from app.auth.google_auth import router as google_auth
-from app.auth.jwt_handler import create_access_token
+
+from app.database import SessionLocal, engine, Base
+from app.models import User, PasswordResetToken, Sensor
+
 from app.schemas import (
     RegisterRequest,
     LoginRequest,
@@ -23,22 +29,13 @@ from app.schemas import (
     ResetPasswordRequest,
     SetPasswordRequest,
     ChangePasswordRequest,
-    UpdatePhoneRequest
+    UpdatePhoneRequest,
+    SensorDataCreate,
 )
 
-load_dotenv()
+# Auth
+from app.auth.jwt_handler import create_access_token
 
-app = FastAPI()
-app.include_router(google_auth, prefix="/auth")
-Base.metadata.create_all(bind=engine)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 def get_db():
     db = SessionLocal()
@@ -50,6 +47,12 @@ def get_db():
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 security = HTTPBearer()
+
+def verify_token(token: str):
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token tidak valid")
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -64,49 +67,64 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
     return user
 
-def verify_token(token: str):
-    try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Token tidak valid")
-
 def hash_password(password: str) -> str:
     if len(password) > 72:
         password = password[:72]
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    if len(plain_password) > 72:
-        plain_password = plain_password[:72]
-    return bcrypt.checkpw(
-        plain_password.encode('utf-8'),
-        hashed_password.encode('utf-8')
+def verify_password(plain: str, hashed: str) -> bool:
+    if len(plain) > 72:
+        plain = plain[:72]
+    return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("✅ Membuat tabel database...")
+    Base.metadata.create_all(bind=engine)
+    print("✅ Database siap.")
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(google_auth, prefix="/auth")
+app.include_router(ai_router, prefix="/api")
+
+
+@app.get("/")
+def root():
+    return {"message": "Backend ResQ Freeze berjalan!"}
+
+
+@app.post("/api/register", status_code=status.HTTP_201_CREATED)
+def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    if db.query(User).filter(
+        (User.email == request.email) | (User.username == request.username)
+    ).first():
+        raise HTTPException(400, "Username atau email sudah terdaftar")
+    
+    user = User(
+        username=request.username,
+        email=request.email,
+        password=hash_password(request.password),
+        phone_number=request.phone_number,
     )
-
-# === ROUTES ===
-
-@app.post("/api/register")
-def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
-    if db.query(User).filter((User.email == request.email) | (User.username == request.username)).first():
-        raise HTTPException(400, "Username atau Email sudah terdaftar")
-    try:
-        user = User(
-            username=request.username,
-            email=request.email,
-            password=hash_password(request.password),
-            phone_number=request.phone_number,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return {"message": "Registrasi berhasil!", "user": {"id": user.id, "username": user.username}}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(500, f"Error: {str(e)}")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"message": "Registrasi berhasil!", "user": {"id": user.id, "username": user.username}}
 
 @app.post("/api/login")
-def login_user(request: LoginRequest, db: Session = Depends(get_db)):
+def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == request.username).first()
     if not user or not verify_password(request.password, user.password):
         raise HTTPException(401, "Username atau password salah")
@@ -118,39 +136,24 @@ def login_user(request: LoginRequest, db: Session = Depends(get_db)):
     return {
         "message": "Login berhasil",
         "access_token": token,
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email
-        }
+        "user": {"id": user.id, "username": user.username, "email": user.email}
     }
 
 @app.get("/api/me")
-def get_me(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
+def me(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
     payload = verify_token(credentials.credentials)
-    user_id = payload.get("id")
-    if not user_id:
-        raise HTTPException(401, "Token tidak valid")
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == payload.get("id")).first()
     if not user:
         raise HTTPException(404, "User tidak ditemukan")
     return {
         "id": user.id,
-        "email": user.email,
         "username": user.username,
+        "email": user.email,
         "phone_number": user.phone_number,
         "google_id": user.google_id,
         "has_password": user.password is not None
     }
 
-@app.get("/")
-def root():
-    return {"message": "Backend ResQ Freeze berjalan!"}
-
-# === FORGOT PASSWORD DENGAN OTP ===
 
 @app.post("/api/forgot-password")
 def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
@@ -159,14 +162,8 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
         return {"message": "Jika email terdaftar, kami telah mengirim kode OTP."}
 
     otp = str(random.randint(100000, 999999))
-    expires = datetime.utcnow() + timedelta(minutes=5)
-
-    token_entry = PasswordResetToken(
-        email=request.email,
-        otp=otp,
-        expires_at=expires
-    )
-    db.add(token_entry)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=5)
+    db.add(PasswordResetToken(email=request.email, otp=otp, expires_at=expires))
     db.commit()
 
     try:
@@ -174,24 +171,14 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
         msg["From"] = "no-reply@resqfreeze.com"
         msg["To"] = request.email
         msg["Subject"] = "Kode OTP - Reset Password"
-
-        body = f"""
-Halo {user.username},
-
-Kode OTP Anda untuk reset password adalah:
-
-{otp}
-
-Kode ini berlaku selama 5 menit.
-        """.strip()
-
-        msg.attach(MIMEText(body, "plain"))
-
+        msg.attach(MIMEText(
+            f"Halo {user.username},\n\nKode OTP Anda: {otp}\n\nBerlaku 5 menit.",
+            "plain"
+        ))
         with smtplib.SMTP(os.getenv("EMAIL_HOST"), int(os.getenv("EMAIL_PORT"))) as server:
             server.starttls()
             server.login(os.getenv("EMAIL_USERNAME"), os.getenv("EMAIL_PASSWORD"))
             server.send_message(msg)
-
     except Exception as e:
         print("Gagal kirim email:", e)
 
@@ -199,20 +186,16 @@ Kode ini berlaku selama 5 menit.
 
 @app.post("/api/verify-otp")
 def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
-    token_entry = db.query(PasswordResetToken).filter(
+    token = db.query(PasswordResetToken).filter(
         PasswordResetToken.email == request.email,
         PasswordResetToken.otp == request.otp
     ).first()
-
-    if not token_entry:
-        raise HTTPException(400, "OTP salah atau tidak valid")
-
-    if datetime.utcnow() > token_entry.expires_at.replace(tzinfo=None):
-        db.delete(token_entry)
-        db.commit()
-        raise HTTPException(400, "OTP sudah kadaluarsa")
-
-    db.delete(token_entry)
+    if not token or datetime.now(timezone.utc) > token.expires_at.replace(tzinfo=timezone.utc):
+        if token:
+            db.delete(token)
+            db.commit()
+        raise HTTPException(400, "OTP salah atau kadaluarsa")
+    db.delete(token)
     db.commit()
     return {"success": True}
 
@@ -221,58 +204,125 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
     user = db.query(User).filter(User.email == request.email).first()
     if not user:
         raise HTTPException(404, "User tidak ditemukan")
-
     user.password = hash_password(request.new_password)
     db.commit()
     return {"message": "Password berhasil diubah!"}
 
-# --- 1. Atur Password (untuk user Google yang belum punya password) ---
 @app.post("/api/user/set-password")
-def set_password(
-    request: SetPasswordRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if current_user.password is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password sudah diatur. Gunakan fitur 'Ganti Password'."
-        )
-    # Set password baru
-    current_user.password = hash_password(request.new_password)
+def set_password(request: SetPasswordRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.password:
+        raise HTTPException(400, "Password sudah diatur. Gunakan 'Ganti Password'.")
+    user.password = hash_password(request.new_password)
     db.commit()
     return {"message": "Password berhasil diatur"}
 
-# --- 2. Ganti Password (hanya jika sudah punya password) ---
 @app.put("/api/user/password")
-def change_password(
-    request: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if current_user.password is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Akun ini belum memiliki password. Silakan atur password terlebih dahulu."
-        )
-    if not verify_password(request.old_password, current_user.password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password lama salah."
-        )
-    current_user.password = hash_password(request.new_password)
+def change_password(request: ChangePasswordRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not user.password:
+        raise HTTPException(400, "Atur password terlebih dahulu.")
+    if not verify_password(request.old_password, user.password):
+        raise HTTPException(400, "Password lama salah.")
+    user.password = hash_password(request.new_password)
     db.commit()
     return {"message": "Password berhasil diubah"}
 
-# --- 3. Ubah Nomor Telepon (untuk semua user) ---
 @app.put("/api/user/phone")
-def update_phone(
-    request: UpdatePhoneRequest,
-    current_user: User = Depends(get_current_user),
+def update_phone(request: UpdatePhoneRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user.phone_number = request.phone_number
+    db.commit()
+    return {"message": "Nomor telepon diperbarui"}
+
+
+# ==================== SENSOR ENDPOINTS ====================
+@app.get("/api/sensors/latest")
+def get_latest_sensor(db: Session = Depends(get_db)):
+    latest = db.query(Sensor).order_by(Sensor.recorded_at.desc()).first()
+    if not latest:
+        now_wib = datetime.now(timezone(timedelta(hours=7)))
+        return {
+            "temperature": 0.0,
+            "humidity": 0.0,
+            "voc": 0.0,
+            "status": "segar",
+            "recorded_at": now_wib.isoformat()
+        }
+    return {
+        "id": latest.id,
+        "user_id": latest.user_id,
+        "temperature": float(latest.temperature) if latest.temperature is not None else 0.0,
+        "humidity": float(latest.humidity) if latest.humidity is not None else 0.0,
+        "voc": float(latest.voc) if latest.voc is not None else 0.0,
+        "status": latest.status or "segar", 
+        "recorded_at": latest.recorded_at.isoformat() if latest.recorded_at else datetime.now(timezone(timedelta(hours=7))).isoformat()
+    }
+
+@app.get("/api/sensors/history")
+def get_sensor_history(limit: int = 12, db: Session = Depends(get_db)):
+    # Pastikan limit tidak melebihi 100
+    limit = min(limit, 100)
+    data = db.query(Sensor).order_by(Sensor.recorded_at.desc()).limit(limit).all()[::-1]
+    return [
+        {
+            "time": d.recorded_at.strftime("%H:%M") if d.recorded_at else "00:00",
+            "suhu": float(d.temperature) if d.temperature is not None else 0.0,
+            "kelembapan": float(d.humidity) if d.humidity is not None else 0.0,
+            "voc": float(d.voc) if d.voc is not None else 0.0,
+            "status": d.status or "segar" 
+        }
+        for d in data
+    ]
+
+
+# ============ ENDPOINT: TERIMA DATA SENSOR DARI ESP32 ============
+@app.post("/api/sensors/", status_code=status.HTTP_201_CREATED)
+def create_sensor_data(
+    data: SensorDataCreate,
     db: Session = Depends(get_db)
 ):
-    # Opsional: validasi format nomor HP Indonesia
-    # Misal: harus angka, minimal 10 digit, dll.
-    current_user.phone_number = request.phone_number
+    default_user_id = 1
+    user = db.query(User).filter(User.id == default_user_id).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="User default (id=1) tidak ditemukan")
+
+    if data.voc < 50:
+        status_str = "segar"
+    elif data.voc < 150:
+        status_str = "mulai_layu"
+    elif data.voc < 400:
+        status_str = "hampir_busuk"
+    else:
+        status_str = "busuk"
+
+    recorded_at = datetime.now(timezone(timedelta(hours=7)))
+
+    sensor = Sensor(
+        user_id=default_user_id,
+        temperature=data.temperature,
+        humidity=data.humidity,
+        voc=data.voc,
+        status=status_str,
+        recorded_at=recorded_at
+    )
+    db.add(sensor)
+
+    # === AUTO-CLEANUP: HANYA SIMPAN 100 DATA TERBARU ===
+    total = db.query(Sensor).count()
+    if total > 100:
+        # Ambil ID 100 data terbaru
+        recent_ids = db.query(Sensor.id)\
+                       .order_by(Sensor.recorded_at.desc())\
+                       .limit(100)\
+                       .subquery()
+        # Hapus semua selain 100 terbaru
+        db.query(Sensor)\
+          .filter(~Sensor.id.in_(db.query(recent_ids.c.id)))\
+          .delete(synchronize_session=False)
+
     db.commit()
-    return {"message": "Nomor telepon berhasil diperbarui"}
+    db.refresh(sensor)
+
+    return {
+        "message": "Data sensor berhasil disimpan",
+        "id": sensor.id,
+        "recorded_at": sensor.recorded_at.isoformat()
+    }

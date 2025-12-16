@@ -13,6 +13,11 @@ export default function LoginForm() {
     password: "",
   });
 
+  const [formErrors, setFormErrors] = useState({
+    username: "",
+    password: "",
+  });
+
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotStep, setForgotStep] = useState("email");
   const [email, setEmail] = useState("");
@@ -22,135 +27,147 @@ export default function LoginForm() {
   const API_BASE = "http://127.0.0.1:8000";
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: value,
     });
+    // Clear error saat user mulai mengetik
+    if (formErrors[name]) {
+      setFormErrors((prev) => ({ ...prev, [name]: "" }));
+    }
   };
 
-// src/components/login.jsx (bagian handleSubmit)
-const handleSubmit = async () => {
-  if (!formData.username || !formData.password) {
-    alert("⚠️ Harap isi username dan password terlebih dahulu!");
-    return;
-  }
+  const handleSubmit = async () => {
+    // Reset error
+    setFormErrors({ username: "", password: "" });
 
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-    });
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      alert(`❌ ${errorData.detail || "Username atau password salah!"}`);
-      return;
+    let hasError = false;
+    if (!formData.username.trim()) {
+      setFormErrors((prev) => ({ ...prev, username: "Username wajib diisi" }));
+      hasError = true;
+    }
+    if (!formData.password.trim()) {
+      setFormErrors((prev) => ({ ...prev, password: "Password wajib diisi" }));
+      hasError = true;
     }
 
-    const data = await res.json();
+    if (hasError) return;
 
-    // ✅ Simpan token & user ke localStorage
-    localStorage.setItem("access_token", data.access_token); // ← ini penting!
-    localStorage.setItem("user", JSON.stringify(data.user));
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
 
-    alert(`✅ Login berhasil! Selamat datang, ${data.user.username}`);
-    navigate("/dashboard");
-  } catch (err) {
-    console.error(err);
-    alert("❌ Gagal menghubungi server. Cek koneksi backend FastAPI!");
-  }
-};
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        alert(`❌ ${errorData.detail || "Username atau password salah!"}`);
+        return;
+      }
+
+      const data = await res.json();
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      alert(`✅ Login berhasil! Selamat datang, ${data.user.username}`);
+      navigate("/dashboard");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Gagal menghubungi server. Cek koneksi backend FastAPI!");
+    }
+  };
 
   // === LOGIN DENGAN GOOGLE ===
   const handleGoogleLogin = () => {
     window.location.href = `${API_BASE}/auth/google/login`;
   };
 
-// Kirim OTP ke backend
-const handleSendOTP = async () => {
-  if (!email) {
-    alert("⚠️ Masukkan email Anda!");
-    return;
-  }
-
-  try {
-    const res = await fetch("http://127.0.0.1:8000/api/forgot-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email }),
-    });
-    const data = await res.json();
-    alert(data.message); // "Jika email terdaftar, ..."
-    if (res.ok) setForgotStep("otp");
-  } catch (err) {
-    alert("❌ Gagal menghubungi server.");
-  }
-};
-
-// Verifikasi OTP ke backend
-const handleVerifyOTP = async () => {
-  if (!otpCode) {
-    alert("⚠️ Masukkan kode OTP!");
-    return;
-  }
-
-  try {
-    const res = await fetch("http://127.0.0.1:8000/api/verify-otp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email, otp: otpCode }),
-    });
-
-    if (res.ok) {
-      setForgotStep("newPassword");
-    } else {
-      const data = await res.json();
-      alert(`❌ ${data.detail || "OTP salah!"}`);
+  // Kirim OTP ke backend
+  const handleSendOTP = async () => {
+    if (!email) {
+      alert("⚠️ Masukkan email Anda!");
+      return;
     }
-  } catch (err) {
-    alert("❌ Gagal verifikasi OTP.");
-  }
-};
 
-// Reset password
-const handleResetPassword = async () => {
-  if (newPassword !== confirmPassword) {
-    alert("❌ Password tidak cocok!");
-    return;
-  }
-  if (newPassword.length < 6) {
-    alert("⚠️ Password minimal 6 karakter!");
-    return;
-  }
-
-  try {
-    const res = await fetch("http://127.0.0.1:8000/api/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email, new_password: newPassword }),
-    });
-
-    if (res.ok) {
-      alert("✅ Password berhasil diubah! Silakan login.");
-      closeForgotModal();
-    } else {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email }),
+      });
       const data = await res.json();
-      alert(`❌ ${data.detail || "Gagal reset password"}`);
+      alert(data.message);
+      if (res.ok) setForgotStep("otp");
+    } catch (err) {
+      alert("❌ Gagal menghubungi server.");
     }
-  } catch (err) {
-    alert("❌ Gagal reset password.");
-  }
-};
+  };
 
-const closeForgotModal = () => {
-  setShowForgotModal(false);
-  setForgotStep("email");
-  setEmail("");
-  setOtpCode("");
-  setNewPassword("");
-  setConfirmPassword("");
-};
+  // Verifikasi OTP ke backend
+  const handleVerifyOTP = async () => {
+    if (!otpCode) {
+      alert("⚠️ Masukkan kode OTP!");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, otp: otpCode }),
+      });
+
+      if (res.ok) {
+        setForgotStep("newPassword");
+      } else {
+        const data = await res.json();
+        alert(`❌ ${data.detail || "OTP salah!"}`);
+      }
+    } catch (err) {
+      alert("❌ Gagal verifikasi OTP.");
+    }
+  };
+
+  // Reset password
+  const handleResetPassword = async () => {
+    if (newPassword !== confirmPassword) {
+      alert("❌ Password tidak cocok!");
+      return;
+    }
+    if (newPassword.length < 6) {
+      alert("⚠️ Password minimal 6 karakter!");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, new_password: newPassword }),
+      });
+
+      if (res.ok) {
+        alert("✅ Password berhasil diubah! Silakan login.");
+        closeForgotModal();
+      } else {
+        const data = await res.json();
+        alert(`❌ ${data.detail || "Gagal reset password"}`);
+      }
+    } catch (err) {
+      alert("❌ Gagal reset password.");
+    }
+  };
+
+  const closeForgotModal = () => {
+    setShowForgotModal(false);
+    setForgotStep("email");
+    setEmail("");
+    setOtpCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-green-50">
@@ -195,8 +212,13 @@ const closeForgotModal = () => {
                   placeholder="Username"
                   value={formData.username}
                   onChange={handleChange}
-                  className="w-full px-6 py-4 pl-16 bg-gray-100 border-2 border-gray-200 rounded-full focus:outline-none focus:border-blue-400 transition-colors placeholder-gray-500"
+                  className={`w-full px-6 py-4 pl-16 bg-gray-100 border-2 rounded-full focus:outline-none transition-colors placeholder-gray-500 ${
+                    formErrors.username ? "border-red-500" : "border-gray-200 focus:border-blue-400"
+                  }`}
                 />
+                {formErrors.username && (
+                  <p className="mt-2 text-red-500 text-sm font-medium ml-2">{formErrors.username}</p>
+                )}
               </div>
 
               {/* Password */}
@@ -210,8 +232,13 @@ const closeForgotModal = () => {
                   placeholder="Password"
                   value={formData.password}
                   onChange={handleChange}
-                  className="w-full px-6 py-4 pl-16 bg-gray-100 border-2 border-gray-200 rounded-full focus:outline-none focus:border-blue-400 transition-colors placeholder-gray-500"
+                  className={`w-full px-6 py-4 pl-16 bg-gray-100 border-2 rounded-full focus:outline-none transition-colors placeholder-gray-500 ${
+                    formErrors.password ? "border-red-500" : "border-gray-200 focus:border-blue-400"
+                  }`}
                 />
+                {formErrors.password && (
+                  <p className="mt-2 text-red-500 text-sm font-medium ml-2">{formErrors.password}</p>
+                )}
               </div>
 
               {/* Forgot Password */}
