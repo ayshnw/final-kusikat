@@ -20,7 +20,7 @@ export default function Register() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [otpPopup, setOtpPopup] = useState(false);
   const [otpCode, setOtpCode] = useState("");
-  const [generatedOtp, setGeneratedOtp] = useState("");
+  
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -41,122 +41,96 @@ export default function Register() {
 
   const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setFormErrors({});
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
+  setFormErrors({});
 
-    // Validasi sisi klien
-    const newErrors = {};
-    if (!formData.username.trim()) newErrors.username = "Username wajib diisi";
-    if (!formData.email.trim()) {
-      newErrors.email = "Email wajib diisi";
-    } else if (!isValidEmail(formData.email)) {
-      newErrors.email = "Format email tidak valid";
-    }
-    if (!formData.password.trim()) {
-      newErrors.password = "Password wajib diisi";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password minimal 6 karakter";
-    }
-    // Validasi konfirmasi password
-    if (!formData.confirmPassword.trim()) {
-      newErrors.confirmPassword = "Konfirmasi password wajib diisi";
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "Password dan konfirmasi password tidak cocok";
-    }
-    if (!formData.phoneNumber.trim()) {
-      newErrors.phoneNumber = "Nomor telepon wajib diisi";
-    } else if (!/^\d+$/.test(formData.phoneNumber)) {
-      newErrors.phoneNumber = "Nomor telepon hanya boleh angka";
-    }
+  // Validasi client
+  const newErrors = {};
+  if (!formData.username.trim()) newErrors.username = "Username wajib diisi";
+  if (!formData.email.trim()) newErrors.email = "Email wajib diisi";
+  if (!formData.password.trim()) newErrors.password = "Password wajib diisi";
+  if (formData.password !== formData.confirmPassword)
+    newErrors.confirmPassword = "Password tidak cocok";
+  if (!formData.phoneNumber.trim())
+    newErrors.phoneNumber = "Nomor telepon wajib diisi";
 
-    if (Object.keys(newErrors).length > 0) {
-      setFormErrors(newErrors);
+  if (Object.keys(newErrors).length > 0) {
+    setFormErrors(newErrors);
+    setIsSubmitting(false);
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/api/auth/request-otp?phone_number=${formData.phoneNumber}`,
+      { method: "POST" }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.detail || "Gagal mengirim OTP");
       setIsSubmitting(false);
       return;
     }
 
-    try {
-      // Kirim data ke backend (tanpa confirmPassword)
-      const res = await fetch(`${API_BASE_URL}/api/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          password: formData.password, // Kirim password saja
-          phone_number: formData.phoneNumber,
-        }),
-      });
+    alert("📱 Kode OTP dikirim ke WhatsApp");
+    setOtpPopup(true);
 
-      const data = await res.json();
+  } catch (err) {
+    alert("❌ Gagal menghubungi server");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
-      if (!res.ok) {
-        const errors = {};
 
-        // 1. Cek error berbasis field (format Pydantic - contoh)
-        if (data.email) {
-          errors.email = Array.isArray(data.email) ? data.email[0] : data.email;
-        }
-        if (data.username) {
-          errors.username = Array.isArray(data.username) ? data.username[0] : data.username;
-        }
-        if (data.phone_number) {
-          errors.phoneNumber = Array.isArray(data.phone_number) ? data.phone_number[0] : data.phone_number;
-        }
-        // Backend biasanya TIDAK mengembalikan error untuk confirmPassword karena tidak dikirim
+     
 
-        // 2. Jika tidak ada error field, cek dari `detail` (string error umum)
-        if (!errors.email && !errors.username && typeof data.detail === "string") {
-          const detail = data.detail.toLowerCase();
-          if (
-            (detail.includes("email") || detail.includes("surel")) &&
-            (detail.includes("exist") || detail.includes("already") || detail.includes("terdaftar") || detail.includes("digunakan"))
-          ) {
-            errors.email = "Email ini sudah terdaftar.";
-          } else if (
-            detail.includes("username") &&
-            (detail.includes("exist") || detail.includes("already") || detail.includes("digunakan") || detail.includes("tersedia"))
-          ) {
-            errors.username = "Username ini sudah digunakan.";
-          } else {
-            // Error umum lain → tampilkan alert
-            alert(`❌ ${data.detail}`);
-          }
-        }
+  const handleVerifyOtp = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: formData.username,
+    email: formData.email,
+    password: formData.password,
+    phone_number: formData.phoneNumber,
+    otp: otpCode,
+  }),
+});
 
-        // Tampilkan error per field jika ada
-        if (Object.keys(errors).length > 0) {
-          setFormErrors(errors);
-        }
 
-        setIsSubmitting(false);
-        return;
-      }
+    const data = await res.json();
 
-      // Registrasi sukses → kirim OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(otp);
-      setOtpPopup(true);
-      alert(`📱 Kode OTP dikirim ke WhatsApp: ${formData.phoneNumber}\n\n(Kode demo: ${otp})`);
-    } catch (err) {
-      console.error("❌ Gagal konek backend:", err);
-      alert("❌ Gagal menghubungi server. Pastikan FastAPI aktif.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+if (!res.ok) {
+  if (typeof data.detail === "string") {
+    alert(`❌ ${data.detail}`);
+  } 
+  else if (Array.isArray(data.detail)) {
+    // Ambil pesan error pertama dari FastAPI
+    alert(`❌ ${data.detail[0]?.msg || "OTP salah atau data tidak valid"}`);
+  } 
+  else {
+    alert("❌ Verifikasi OTP gagal");
+  }
+  return;
+}
 
-  const handleVerifyOtp = () => {
-    if (otpCode.trim() === generatedOtp) {
-      alert("✅ Verifikasi berhasil! Akun Anda telah dibuat.");
-      setOtpPopup(false);
-      navigate("/login", { replace: true });
-    } else {
-      alert("❌ Kode OTP salah. Silakan coba lagi.");
-    }
-  };
+
+alert(data.message || "Verifikasi berhasil!");
+setOtpPopup(false);
+navigate("/login", { replace: true });
+
+  } catch (err) {
+    alert("❌ Verifikasi OTP gagal");
+  }
+};
+
+
 
   const handleGoogleSignUp = () => {
     window.location.href = `${API_BASE_URL}/auth/google/login`;

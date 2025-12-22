@@ -1,25 +1,26 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-import bcrypt
 from jose import JWTError, jwt
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date as dt_date  # ✅ tambahkan dt_date
 import os
 import smtplib
 import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from contextlib import asynccontextmanager
+import requests
 
 from app.routes.ai import router as ai_router
 from app.auth.google_auth import router as google_auth
 
 from app.database import SessionLocal, engine, Base
-from app.models import User, PasswordResetToken, Sensor
+from app.models import User, PasswordResetToken, Sensor, Notification  # ✅ pastikan Notification di-import
+from passlib.context import CryptContext
 
 from app.schemas import (
     RegisterRequest,
@@ -33,9 +34,20 @@ from app.schemas import (
     SensorDataCreate,
 )
 
-# Auth
+from app.auth.manual_auth import router as manual_auth_router
 from app.auth.jwt_handler import create_access_token
 
+
+# === Setup ===
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    if len(password) > 72:
+        password = password[:72]
+    return pwd_context.hash(password)
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
 
 def get_db():
     db = SessionLocal()
@@ -67,18 +79,57 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
     return user
 
-def hash_password(password: str) -> str:
-    if len(password) > 72:
-        password = password[:72]
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
-def verify_password(plain: str, hashed: str) -> bool:
-    if len(plain) > 72:
-        plain = plain[:72]
-    return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+# === Fungsi Kirim WA (1x/hari) ===
+def _send_wa_if_not_sent_today(phone: str, msg: str, title: str, current_user: User, db: Session):
+    """
+    Kirim WA hanya jika belum pernah dikirim hari ini untuk judul yang sama.
+    """
+    today = dt_date.today()  # hanya tanggal
+
+    existing = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.title == title,
+        Notification.sent_date == today
+    ).first()
+
+    if existing:
+        print(f"📅 Notifikasi '{title}' sudah dikirim hari ini. Skip.")
+        return
+
+    try:
+        clean_phone = phone.strip()
+        if clean_phone.startswith("0"):
+            clean_phone = "62" + clean_phone[1:]
+
+        # 🔥 PERBAIKAN: HAPUS SPASI DI AKHIR URL!
+        url = "https://api.aliffajriadi.my.id/botwa/api/kirim-pesan"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": "apikeyrivaldokelompokpbliot02334"
+        }
+        payload = {"nomor": clean_phone, "pesan": msg}
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            new_notif = Notification(
+                user_id=current_user.id,
+                title=title,
+                message=msg,
+                sent_at=datetime.now(timezone(timedelta(hours=7))),
+                sent_date=today  # ✅ Wajib diisi!
+            )
+            db.add(new_notif)
+            db.commit()
+            print(f"✅ Notifikasi '{title}' terkirim dan disimpan ke DB.")
+        else:
+            print(f"❌ Gagal kirim WA: {response.text}")
+
+    except Exception as e:
+        print(f"Error kirim WA: {e}")
 
 
+# === Lifespan ===
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("✅ Membuat tabel database...")
@@ -98,13 +149,16 @@ app.add_middleware(
 
 app.include_router(google_auth, prefix="/auth")
 app.include_router(ai_router, prefix="/api")
+app.include_router(manual_auth_router, prefix="/api/auth")
 
 
+# === ROOT ===
 @app.get("/")
 def root():
     return {"message": "Backend ResQ Freeze berjalan!"}
 
 
+# === AUTH & USER ===
 @app.post("/api/register", status_code=status.HTTP_201_CREATED)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(
@@ -154,7 +208,6 @@ def me(credentials: HTTPAuthorizationCredentials = Depends(security), db: Sessio
         "has_password": user.password is not None
     }
 
-
 @app.post("/api/forgot-password")
 def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
@@ -183,6 +236,45 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
         print("Gagal kirim email:", e)
 
     return {"message": "Jika email terdaftar, kami telah mengirim kode OTP."}
+
+
+@app.post("/api/auth/request-otp")
+def request_otp(
+    phone_number: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    if not phone_number:
+        raise HTTPException(400, "Nomor telepon wajib diisi")
+
+    clean_phone = phone_number.strip()
+    if clean_phone.startswith("0"):
+        clean_phone = "62" + clean_phone[1:]
+
+    otp = str(random.randint(100000, 999999))
+
+    try:
+        # 🔥 PERBAIKAN: HAPUS SPASI DI AKHIR URL!
+        url = "https://api.aliffajriadi.my.id/botwa/api/kirim-pesan"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": "apikeyrivaldokelompokpbliot02334"
+        }
+        payload = {
+            "nomor": clean_phone,
+            "pesan": f"Kode OTP ResQ Freeze kamu adalah: {otp}\n\nBerlaku 5 menit."
+        }
+
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+
+        if response.status_code != 200:
+            raise HTTPException(500, f"Gagal kirim OTP via WA: {response.text}")
+
+        return {"message": "OTP dikirim ke WhatsApp", "otp": otp}
+
+    except Exception as e:
+        print(f"Error kirim OTP: {e}")
+        raise HTTPException(500, "Gagal mengirim OTP")
+
 
 @app.post("/api/verify-otp")
 def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
@@ -233,10 +325,109 @@ def update_phone(request: UpdatePhoneRequest, user: User = Depends(get_current_u
     return {"message": "Nomor telepon diperbarui"}
 
 
+# ==================== AUTO NOTIFICATION (OTOMATIS) ====================
+
+@app.get("/api/notifications/auto")
+def get_and_send_notifications_auto(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    latest_sensor = db.query(Sensor).filter(Sensor.user_id == 1)\
+                                   .order_by(Sensor.recorded_at.desc()).first()
+    if not latest_sensor:
+        return []
+
+    if not current_user.phone_number:
+        return []
+
+    notifications = []
+    now_wib = datetime.now(timezone(timedelta(hours=7)))
+    timestamp_str = now_wib.strftime("%A, %d %B %Y\n%H:%M:%S")
+
+    base_msg = (
+        f"{timestamp_str}\n"
+        f"Suhu : {latest_sensor.temperature or 0.0}°C\n"
+        f"Kelembapan : {latest_sensor.humidity or 0.0}%\n"
+        f"Gas: {latest_sensor.voc or 0.0} ppm\n"
+    )
+
+    # Kumpulkan semua peringatan dalam satu string
+    warnings = []
+
+    if latest_sensor.voc and latest_sensor.voc > 400:
+        warnings.append("Sayur anda akan busuk 3 hari lagi")
+
+    if latest_sensor.temperature and latest_sensor.temperature > 5.0:
+        warnings.append("Suhu melebihi batas! Harap periksa pendingin.")
+
+    if latest_sensor.humidity and latest_sensor.humidity < 60.0:
+        warnings.append("Kelembapan rendah! Harap periksa sistem humidifier.")
+
+    # Jika ada peringatan, kirim WA
+    if warnings:
+        full_message = base_msg + "\n" + "\n".join(warnings)
+
+        # Kirim hanya 1x/hari (gunakan judul "Notifikasi Harian")
+        _send_wa_if_not_sent_today(current_user.phone_number, full_message, "Notifikasi Harian", current_user, db)
+
+        notifications.append({
+            "id": 1,
+            "title": "Notifikasi Harian",
+            "message": full_message,
+            "created_at": now_wib.isoformat(),
+            "isRead": False
+        })
+
+    return notifications
+
+
+# ==================== NOTIF MANUAL (opsional) ====================
+@app.post("/api/send-notification")
+def send_notification_to_wa(
+    request: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    message = request.get("message")
+    phone = request.get("phone") or current_user.phone_number
+
+    if not message:
+        raise HTTPException(400, "Pesan wajib diisi")
+    if not phone:
+        raise HTTPException(400, "Nomor telepon tidak ditemukan. Silakan lengkapi profil Anda.")
+
+    clean_phone = phone.strip()
+    if clean_phone.startswith("0"):
+        clean_phone = "62" + clean_phone[1:]
+
+    try:
+        # 🔥 PERBAIKAN: HAPUS SPASI DI AKHIR URL!
+        url = "https://api.aliffajriadi.my.id/botwa/api/kirim-pesan"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": "apikeyrivaldokelompokpbliot02334"
+        }
+        payload = {
+            "nomor": clean_phone,
+            "pesan": message
+        }
+
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            return {"status": "success", "message": "Notifikasi terkirim ke WhatsApp"}
+        else:
+            raise HTTPException(500, f"Gagal kirim WA: {response.text}")
+
+    except Exception as e:
+        raise HTTPException(500, f"Error saat kirim WA: {str(e)}")
+
+
 # ==================== SENSOR ENDPOINTS ====================
 @app.get("/api/sensors/latest")
 def get_latest_sensor(db: Session = Depends(get_db)):
-    latest = db.query(Sensor).order_by(Sensor.recorded_at.desc()).first()
+    latest = db.query(Sensor).filter(Sensor.user_id == 1)\
+                            .order_by(Sensor.recorded_at.desc()).first()
     if not latest:
         now_wib = datetime.now(timezone(timedelta(hours=7)))
         return {
@@ -258,9 +449,9 @@ def get_latest_sensor(db: Session = Depends(get_db)):
 
 @app.get("/api/sensors/history")
 def get_sensor_history(limit: int = 12, db: Session = Depends(get_db)):
-    # Pastikan limit tidak melebihi 100
     limit = min(limit, 100)
-    data = db.query(Sensor).order_by(Sensor.recorded_at.desc()).limit(limit).all()[::-1]
+    data = db.query(Sensor).filter(Sensor.user_id == 1)\
+                          .order_by(Sensor.recorded_at.desc()).limit(limit).all()[::-1]
     return [
         {
             "time": d.recorded_at.strftime("%H:%M") if d.recorded_at else "00:00",
@@ -272,13 +463,8 @@ def get_sensor_history(limit: int = 12, db: Session = Depends(get_db)):
         for d in data
     ]
 
-
-# ============ ENDPOINT: TERIMA DATA SENSOR DARI ESP32 ============
 @app.post("/api/sensors/", status_code=status.HTTP_201_CREATED)
-def create_sensor_data(
-    data: SensorDataCreate,
-    db: Session = Depends(get_db)
-):
+def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     default_user_id = 1
     user = db.query(User).filter(User.id == default_user_id).first()
     if not user:
@@ -305,15 +491,12 @@ def create_sensor_data(
     )
     db.add(sensor)
 
-    # === AUTO-CLEANUP: HANYA SIMPAN 100 DATA TERBARU ===
     total = db.query(Sensor).count()
     if total > 100:
-        # Ambil ID 100 data terbaru
         recent_ids = db.query(Sensor.id)\
                        .order_by(Sensor.recorded_at.desc())\
                        .limit(100)\
                        .subquery()
-        # Hapus semua selain 100 terbaru
         db.query(Sensor)\
           .filter(~Sensor.id.in_(db.query(recent_ids.c.id)))\
           .delete(synchronize_session=False)

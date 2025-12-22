@@ -1,6 +1,15 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
+from pydantic import BaseModel
+
+class VerifyOtpRegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str = Field(..., min_length=6, max_length=72)
+    phone_number: str
+    otp: str = Field(..., pattern=r"^\d{6}$")
+
 
 
 # ===================================================================

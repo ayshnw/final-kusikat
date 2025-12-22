@@ -1,6 +1,21 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from app.database import Base
 from datetime import datetime
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Date
+from sqlalchemy.sql import func
+from .database import Base
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    is_read = Column(Boolean, default=False)
+    sent_at = Column(DateTime, nullable=True)
+    sent_date = Column(Date, nullable=True)  # ← Pastikan ini ada!
 
 
 # Tabel User

@@ -1,30 +1,57 @@
-# app/auth/manual_auth.py
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
+
 from app.database import get_db
 from app.models import User
-from app.schemas import UserCreate, UserLogin
+from app.utils.whatsapp_otp import send_otp_whatsapp, verify_otp
+from app.schemas import VerifyOtpRegisterRequest
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-@router.post("/register")
-def register_user(request: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.email == request.email).first()
-    if existing_user:
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256"],
+    deprecated="auto"
+)
+
+
+@router.post("/request-otp")
+def request_otp(phone_number: str):
+    if not send_otp_whatsapp(phone_number):
+        raise HTTPException(status_code=500, detail="Gagal mengirim OTP")
+
+    return {"message": "Kode OTP berhasil dikirim ke WhatsApp"}
+
+
+@router.post("/verify-otp")
+def verify_otp_and_register(
+    request: VerifyOtpRegisterRequest,
+    db: Session = Depends(get_db)
+):
+    # 1️⃣ Verifikasi OTP
+    if not verify_otp(request.phone_number, request.otp):
+        raise HTTPException(status_code=400, detail="OTP salah atau kadaluarsa")
+
+    # 2️⃣ Cek email
+    if db.query(User).filter(User.email == request.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    hashed_password = pwd_context.hash(request.password)
-    user = User(name=request.name, email=request.email, password=hashed_password)
+    # 3️⃣ HASH PASSWORD (AMAN 72 BYTE)
+    password = request.password
+    if len(password) > 72:
+        password = password[:72]
+
+    hashed_password = pwd_context.hash(password)
+
+    # 4️⃣ Simpan user
+    user = User(
+        username=request.name,
+        email=request.email,
+        password=hashed_password,
+        phone_number=request.phone_number
+    )
+
     db.add(user)
     db.commit()
-    db.refresh(user)
-    return {"message": "User registered successfully"}
 
-@router.post("/login")
-def login_user(request: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
-    if not user or not pwd_context.verify(request.password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"message": "Login success", "user": {"id": user.id, "name": user.name, "email": user.email}}
+    return {"message": "Verifikasi berhasil! Akun Anda telah dibuat."}
