@@ -7,6 +7,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const [user, setUser] = useState({
     name: "Pengguna",
@@ -26,7 +27,6 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
 
   const navigate = useNavigate();
 
-  // === 1. Fetch User Data ===
   useEffect(() => {
     const fetchUser = async () => {
       const token = localStorage.getItem("access_token");
@@ -50,7 +50,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
           });
         }
       } catch (err) {
-        console.error("Gagal ambil data user:", err);
+        console.error("Gagal mengambil data pengguna:", err);
       } finally {
         setLoading(false);
       }
@@ -59,7 +59,6 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
     fetchUser();
   }, []);
 
-  // === 2. Fetch Notifications OTOMATIS (dan kirim WA otomatis) ===
   useEffect(() => {
     const fetchNotifications = async () => {
       const token = localStorage.getItem("access_token");
@@ -69,52 +68,82 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
       }
 
       try {
-        const res = await fetch("http://localhost:8000/api/notifications/auto", {
-  headers: { Authorization: `Bearer ${token}` },
-});
+        const res = await fetch("http://localhost:8000/api/notifications", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
         if (res.ok) {
           const data = await res.json();
-          const formatted = data.map((notif, index) => ({
-            id: notif.id || index + 1,
+          const formatted = data.map((notif) => ({
+            id: notif.id,
             title: notif.title,
             message: notif.message,
-            time: formatTime(notif.created_at),
-            isRead: notif.isRead || false,
+            time: formatTime(notif.sent_at),
+            isRead: notif.is_read || false,
           }));
           setNotifications(formatted);
         } else {
-          console.error("Gagal ambil notifikasi otomatis");
           setNotifications([]);
         }
       } catch (err) {
-        console.error("Error fetch notifikasi:", err);
         setNotifications([]);
       }
     };
 
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 60000); // Refresh tiap 1 menit
+    const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, []); // Tidak perlu dependensi user
+  }, []);
 
-  // === Helper: Format Waktu ===
+  const markAllAsRead = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+
+    try {
+      await fetch("http://localhost:8000/api/notifications/read", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      setNotifications((prev) =>
+        prev.map((notif) => ({ ...notif, isRead: true }))
+      );
+    } catch (err) {
+      console.error("Gagal menandai notifikasi sebagai dibaca:", err);
+    }
+  };
+
   const formatTime = (isoString) => {
+    if (!isoString) return "Tidak diketahui";
     const now = new Date();
     const past = new Date(isoString);
     const diffMs = now - past;
     const diffMins = Math.floor(diffMs / 60000);
-
     if (diffMins < 1) return "Baru saja";
     if (diffMins < 60) return `${diffMins} menit yang lalu`;
     if (diffMins < 1440) return `${Math.floor(diffMins / 60)} jam yang lalu`;
     return `${Math.floor(diffMins / 1440)} hari yang lalu`;
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      try {
+        await fetch("http://localhost:8000/api/logout", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (err) {
+        console.error("Logout API call failed:", err);
+      }
+    }
+
     localStorage.removeItem("user");
     localStorage.removeItem("access_token");
-    navigate("/login");
+    navigate("/login", { replace: true });
   };
 
   const handleSavePhone = async (e) => {
@@ -152,16 +181,16 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
 
     if (user.has_password) {
       if (newPassword !== confirmPassword) {
-        alert("Password baru dan konfirmasi tidak cocok!");
+        alert("Kata sandi baru dan konfirmasi tidak cocok!");
         return;
       }
       if (newPassword.length < 6) {
-        alert("Password minimal 6 karakter");
+        alert("Kata sandi minimal 6 karakter");
         return;
       }
     } else {
       if (tempPassword.length < 6) {
-        alert("Password minimal 6 karakter");
+        alert("Kata sandi minimal 6 karakter");
         return;
       }
     }
@@ -189,18 +218,11 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
       }
 
       if (res.ok) {
-        if (!user.has_password) {
-          setUser((prev) => ({ ...prev, has_password: true }));
-        }
-        setIsChangingPassword(false);
-        setOldPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-        setTempPassword("");
-        alert("Password berhasil disimpan!");
+        alert("Kata sandi berhasil disimpan! Anda akan logout dan diminta login ulang.");
+        handleLogout();
       } else {
         const err = await res.json();
-        alert(err.detail || "Gagal menyimpan password");
+        alert(err.detail || "Gagal menyimpan kata sandi");
       }
     } catch (err) {
       alert("Terjadi kesalahan jaringan");
@@ -256,10 +278,14 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
             </p>
           </div>
 
-          {/* Notification */}
           <div className="relative">
             <button
-              onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+              onClick={() => {
+                setIsNotificationOpen(!isNotificationOpen);
+                if (!isNotificationOpen && unreadCount > 0) {
+                  markAllAsRead();
+                }
+              }}
               className="w-10 h-10 rounded-full flex items-center justify-center shadow-md cursor-pointer hover:scale-110 transition-transform relative"
               style={{ backgroundColor: "#4ade80" }}
             >
@@ -306,7 +332,6 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
             )}
           </div>
 
-          {/* Profile Dropdown */}
           <div className="relative">
             <button
               onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -343,10 +368,10 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
                         onClick={() => setIsChangingPassword(true)}
                         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
                       >
-                        {user.has_password ? "Ubah Password" : "Atur Password"}
+                        {user.has_password ? "Ubah Kata Sandi" : "Atur Kata Sandi"}
                       </button>
                       <button
-                        onClick={handleLogout}
+                        onClick={() => setShowLogoutConfirm(true)}
                         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
                       >
                         Logout
@@ -385,21 +410,21 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
                     <form onSubmit={handleSavePassword} className="flex flex-col gap-2 px-4 py-2">
                       {user.has_password ? (
                         <>
-                          <label className="text-xs text-gray-500">Password Lama</label>
+                          <label className="text-xs text-gray-500">Kata Sandi Lama</label>
                           <input
                             type="password"
                             value={oldPassword}
                             onChange={(e) => setOldPassword(e.target.value)}
                             className="border border-gray-300 rounded px-2 py-1 text-sm"
                           />
-                          <label className="text-xs text-gray-500">Password Baru</label>
+                          <label className="text-xs text-gray-500">Kata Sandi Baru</label>
                           <input
                             type="password"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
                             className="border border-gray-300 rounded px-2 py-1 text-sm"
                           />
-                          <label className="text-xs text-gray-500">Konfirmasi Password</label>
+                          <label className="text-xs text-gray-500">Konfirmasi Kata Sandi</label>
                           <input
                             type="password"
                             value={confirmPassword}
@@ -409,7 +434,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
                         </>
                       ) : (
                         <>
-                          <label className="text-xs text-gray-500">Buat Password Baru</label>
+                          <label className="text-xs text-gray-500">Buat Kata Sandi Baru</label>
                           <input
                             type="password"
                             value={tempPassword}
@@ -444,16 +469,50 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
         </div>
       </div>
 
-      {(isNotificationOpen || isProfileOpen) && (
+      {(isNotificationOpen || isProfileOpen || showLogoutConfirm) && (
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-40 bg-black bg-opacity-40"
           onClick={() => {
             setIsNotificationOpen(false);
             setIsProfileOpen(false);
             setIsEditing(false);
             setIsChangingPassword(false);
+            setShowLogoutConfirm(false);
           }}
         />
+      )}
+
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md transform transition-all duration-300 ease-out opacity-100 scale-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-7 text-center">
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5">
+                <X className="w-8 h-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Yakin ingin logout?</h3>
+              <p className="text-gray-600 text-sm mb-6">
+                Sesi Anda akan diakhiri dan Anda harus login kembali untuk mengakses akun.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="px-5 py-2.5 text-gray-700 font-medium rounded-xl border border-gray-300 hover:bg-gray-50 transition-colors text-sm min-w-[90px]"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="px-5 py-2.5 bg-red-500 text-white font-medium rounded-xl hover:bg-red-600 transition-colors text-sm shadow-md min-w-[90px]"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </header>
   );

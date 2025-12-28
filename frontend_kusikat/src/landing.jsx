@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronRight, Leaf, RefreshCw, Bell, Star, User } from 'lucide-react';
-import logo from "./assets/logo_kusikat.png"; // tetap pakai logo lama, ganti nanti jika perlu
+import logo from "./assets/logo_kusikat.png";
 
-// Fungsi fetch data backend
 async function fetchBackendData() {
   try {
     const res = await fetch("http://127.0.0.1:8000/");
@@ -62,7 +61,6 @@ export default function KusiKatLanding() {
 
   const handleNavigateToRegister = () => navigate('/register');
 
-  // Data tim
   const teamMembers = [
     { name: "Rivaldo Franscisco", nim: "3312401098" },
     { name: "Aisyah Nurwa Hida", nim: "3312401004" },
@@ -72,8 +70,6 @@ export default function KusiKatLanding() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 overflow-hidden relative">
-
-      {/* Animated Background Blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute w-96 h-96 bg-emerald-300/30 rounded-full mix-blend-multiply filter blur-3xl animate-pulse"
           style={{ top: '10%', left: '10%', transform: `translate(${scrollY * 0.15}px, ${scrollY * 0.2}px) scale(${1 + Math.sin(scrollY * 0.01) * 0.1})`, transition: 'transform 0.3s ease-out' }} />
@@ -83,7 +79,6 @@ export default function KusiKatLanding() {
           style={{ bottom: '10%', left: '50%', transform: `translate(-50%, ${-scrollY * 0.25}px) rotate(${scrollY * 0.1}deg)`, transition: 'transform 0.3s ease-out', animationDelay: '2s' }} />
       </div>
 
-      {/* Navbar */}
       <nav className={`relative z-50 flex items-center justify-between p-6 md:p-8 bg-white/70 backdrop-blur-xl border-b border-emerald-100 transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
         <div className="flex items-center gap-3 hover:scale-105 transition-transform duration-300 cursor-pointer group" onClick={() => navigate('/')}>
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-white to-[#192B0D] flex items-center justify-center shadow-lg group-hover:shadow-xl group-hover:rotate-12 transition-all duration-300">
@@ -99,7 +94,6 @@ export default function KusiKatLanding() {
         </button>
       </nav>
 
-      {/* Mobile Menu */}
       {isMenuOpen && (
         <div className="md:hidden fixed top-24 right-6 left-6 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl p-6 z-50 border border-emerald-100" style={{ animation: 'slideDown 0.3s ease-out' }}>
           <button onClick={handleNavigateToRegister} className="w-full px-6 py-3 bg-gradient-to-r from-[#192B0D] to-[#2E5A1A] text-white rounded-full font-medium hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95">
@@ -108,11 +102,8 @@ export default function KusiKatLanding() {
         </div>
       )}
 
-      {/* Hero Section */}
       <div className="relative z-10 container mx-auto px-6 py-16 md:py-24">
         <div className="flex flex-col lg:flex-row items-center gap-12">
-
-          {/* Left Content */}
           <div className={`flex-1 space-y-6 transition-all duration-1000 ${mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-12'}`}>
             <div className="inline-block px-4 py-2 bg-emerald-100 rounded-full text-emerald-700 text-sm font-medium mb-4">✨ Solusi Terbaru</div>
             <h1 className="text-5xl md:text-7xl font-bold text-[#192B0D] leading-tight">ResQ <span className="text-[#192B0D]">Frezee</span></h1>
@@ -130,7 +121,6 @@ export default function KusiKatLanding() {
               </button>
             </div>
 
-            {/* Stats */}
             <div className="flex gap-8 pt-8">
               <div className="text-center">
                 <div className="text-3xl font-bold text-[#192B0D]">{stats.users}</div>
@@ -154,7 +144,6 @@ export default function KusiKatLanding() {
             </div>
           </div>
 
-          {/* Right Content - Logo */}
           <div className={`flex-1 relative max-w-md transition-all duration-1000 delay-300 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
             <div className="relative">
               <div className="relative bg-gradient-to-br from-white to-[#e8f5e9] rounded-3xl p-8 shadow-2xl hover:shadow-[#192B0D]/50 transition-all duration-500 border-4 border-[#2E5A1A]/30">
@@ -169,7 +158,6 @@ export default function KusiKatLanding() {
           </div>
         </div>
 
-        {/* Features Section */}
         <div className={`mt-20 md:mt-32 transition-all duration-1000 delay-500 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
           <h2 className="text-3xl md:text-4xl font-bold text-center text-[#192B0D] mb-12">
             Kenapa Pilih <span className="text-[#192B0D]">ResQ Frezee?</span>
@@ -191,7 +179,6 @@ export default function KusiKatLanding() {
           </div>
         </div>
 
-        {/* Tim Pengembang */}
         <div className={`mt-24 md:mt-32 transition-all duration-1000 delay-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
           <h2 className="text-3xl md:text-4xl font-bold text-center text-[#192B0D] mb-12">
             Tim Pengembang
@@ -210,7 +197,6 @@ export default function KusiKatLanding() {
         </div>
       </div>
 
-      {/* Animations */}
       <style>{`
         @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes float { 0%,100% { transform: translateY(0px) rotate(0deg); } 25% { transform: translateY(-15px) rotate(1deg); } 50% { transform: translateY(-10px) rotate(-1deg); } 75% { transform: translateY(-20px) rotate(0.5deg); } }

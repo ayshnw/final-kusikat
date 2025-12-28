@@ -15,19 +15,15 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from contextlib import asynccontextmanager
 import requests
-from typing import List
 
-# === ROUTES ===
 from app.routes.ai import router as ai_router
 from app.auth.google_auth import router as google_auth
-from app.auth.manual_auth import router as manual_auth_router
 
-# === DATABASE & MODELS ===
 from app.database import SessionLocal, engine, Base
+# 🔥 Pastikan ChatHistory diimpor agar tabel terbuat
 from app.models import User, PasswordResetToken, Sensor, Notification, ChatHistory
 from passlib.context import CryptContext
 
-# === SCHEMAS ===
 from app.schemas import (
     RegisterRequest,
     LoginRequest,
@@ -38,10 +34,12 @@ from app.schemas import (
     ChangePasswordRequest,
     UpdatePhoneRequest,
     SensorDataCreate,
-    ChatMessage,
     ChatMessageCreate,
+    ChatMessage,
+    ClearChatHistoryResponse
 )
 
+from app.auth.manual_auth import router as manual_auth_router
 from app.auth.jwt_handler import create_access_token
 
 
@@ -95,6 +93,10 @@ def _send_wa_if_status_changed(
     current_user: User,
     db: Session
 ):
+    """
+    Kirim notifikasi WhatsApp hanya jika status berubah,
+    dan hindari duplikasi notifikasi untuk transisi yang sama dalam satu hari.
+    """
     if new_status == previous_status:
         return
 
@@ -122,7 +124,6 @@ def _send_wa_if_status_changed(
         if clean_phone.startswith("0"):
             clean_phone = "62" + clean_phone[1:]
 
-        # 🔥 DIPERBAIKI: Hapus spasi di akhir URL!
         url = "https://api.aliffajriadi.my.id/botwa/api/kirim-pesan"
         headers = {
             "Content-Type": "application/json",
@@ -153,7 +154,7 @@ def _send_wa_if_status_changed(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("✅ Membuat tabel database...")
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)  # 🔥 Ini akan bikin tabel chat_histories juga!
     print("✅ Database siap.")
     yield
 
@@ -167,7 +168,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === ROUTER ===
 app.include_router(google_auth, prefix="/auth")
 app.include_router(ai_router, prefix="/api")
 app.include_router(manual_auth_router, prefix="/api/auth")
@@ -179,8 +179,8 @@ def root():
     return {"message": "Backend ResQ Freeze berjalan!"}
 
 
-# ==================== 🔥 CHAT HISTORY ENDPOINTS ====================
-@app.get("/api/chat-history", response_model=List[ChatMessage])
+# ==================== 🔁 CHAT HISTORY ENDPOINTS ====================
+@app.get("/api/chat-history", response_model=list[ChatMessage])
 def get_chat_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -191,19 +191,20 @@ def get_chat_history(
 
     result = []
     for msg in db_messages:
+        # Konversi JSON string → list
         ingredients = json.loads(msg.ingredients) if msg.ingredients else []
         steps = json.loads(msg.steps) if msg.steps else []
-        result.append(ChatMessage(
-            id=msg.id,
-            user_id=msg.user_id,
-            message_type=msg.message_type,
-            sender=msg.sender,
-            content=msg.content,
-            recipe_name=msg.recipe_name,
-            ingredients=ingredients,
-            steps=steps,
-            created_at=msg.created_at
-        ))
+        result.append({
+            "id": msg.id,
+            "user_id": msg.user_id,
+            "message_type": msg.message_type,
+            "sender": msg.sender,
+            "content": msg.content,
+            "recipe_name": msg.recipe_name,
+            "ingredients": ingredients,
+            "steps": steps,
+            "created_at": msg.created_at
+        })
     return result
 
 
@@ -213,6 +214,7 @@ def create_chat_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Konversi list → JSON string untuk disimpan
     ingredients_str = json.dumps(message.ingredients) if message.ingredients else None
     steps_str = json.dumps(message.steps) if message.steps else None
 
@@ -243,32 +245,6 @@ def clear_chat_history(
     return {"message": "Riwayat chat berhasil dihapus"}
 
 
-@app.get("/api/notifications")
-def get_user_notifications(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Ambil semua notifikasi untuk pengguna yang sedang login,
-    diurutkan dari terbaru ke terlama.
-    """
-    notifications = db.query(Notification)\
-                      .filter(Notification.user_id == current_user.id)\
-                      .order_by(Notification.sent_at.desc())\
-                      .all()
-    
-    return [
-        {
-            "id": n.id,
-            "title": n.title,
-            "message": n.message,
-            "sent_at": n.sent_at.isoformat() if n.sent_at else None,
-            "sent_date": n.sent_date.isoformat() if n.sent_date else None,
-        }
-        for n in notifications
-    ]
-
-
 # === AUTH & USER ===
 @app.post("/api/register", status_code=status.HTTP_201_CREATED)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -296,7 +272,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     
     token = create_access_token(
         data={"sub": user.email, "id": user.id},
-        expires_delta=timedelta(hours=24)
+        expires_delta=timedelta(minutes=60)
     )
     return {
         "message": "Login berhasil",
@@ -433,7 +409,7 @@ def update_phone(request: UpdatePhoneRequest, user: User = Depends(get_current_u
     return {"message": "Nomor telepon diperbarui"}
 
 
-# ==================== SENSOR ENDPOINTS ====================
+# ==================== ENDPOINT SENSOR DENGAN NOTIF STATUS BERUBAH ====================
 @app.post("/api/sensors/", status_code=status.HTTP_201_CREATED)
 def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     default_user_id = 1
@@ -441,6 +417,7 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=400, detail="User default (id=1) tidak ditemukan")
 
+    # Tentukan status berdasarkan VOC
     if data.voc < 50:
         new_status = "segar"
     elif data.voc < 150:
@@ -452,10 +429,12 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
 
     recorded_at = datetime.now(timezone(timedelta(hours=7)))
 
+    # Ambil status terakhir
     last_sensor = db.query(Sensor).filter(Sensor.user_id == default_user_id)\
                                  .order_by(Sensor.recorded_at.desc()).first()
     previous_status = last_sensor.status if last_sensor else new_status
 
+    # Simpan data baru
     sensor = Sensor(
         user_id=default_user_id,
         temperature=data.temperature,
@@ -466,6 +445,7 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     )
     db.add(sensor)
 
+    # Batasi histori ke 100 data terbaru
     total = db.query(Sensor).count()
     if total > 100:
         recent_ids = db.query(Sensor.id)\
@@ -479,6 +459,7 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(sensor)
 
+    # Kirim notifikasi jika status berubah & user punya nomor
     if user.phone_number and new_status != previous_status:
         _send_wa_if_status_changed(
             new_status=new_status,
@@ -495,6 +476,8 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
         "recorded_at": sensor.recorded_at.isoformat()
     }
 
+
+# ==================== SENSOR ENDPOINTS LAINNYA ====================
 @app.get("/api/sensors/latest")
 def get_latest_sensor(db: Session = Depends(get_db)):
     latest = db.query(Sensor).filter(Sensor.user_id == 1)\
@@ -535,6 +518,7 @@ def get_sensor_history(limit: int = 12, db: Session = Depends(get_db)):
     ]
 
 
+# ==================== MANUAL NOTIFICATION (opsional) ====================
 @app.post("/api/send-notification")
 def send_notification_to_wa(
     request: dict = Body(...),

@@ -32,14 +32,12 @@ export default function LoginForm() {
       ...formData,
       [name]: value,
     });
-    // Clear error saat user mulai mengetik
     if (formErrors[name]) {
       setFormErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
   const handleSubmit = async () => {
-    // Reset error
     setFormErrors({ username: "", password: "" });
 
     let hasError = false;
@@ -48,7 +46,7 @@ export default function LoginForm() {
       hasError = true;
     }
     if (!formData.password.trim()) {
-      setFormErrors((prev) => ({ ...prev, password: "Password wajib diisi" }));
+      setFormErrors((prev) => ({ ...prev, password: "Kata sandi wajib diisi" }));
       hasError = true;
     }
 
@@ -63,7 +61,7 @@ export default function LoginForm() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        alert(`❌ ${errorData.detail || "Username atau password salah!"}`);
+        alert(`${errorData.detail || "Username atau kata sandi salah!"}`);
         return;
       }
 
@@ -71,20 +69,18 @@ export default function LoginForm() {
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      alert(`✅ Login berhasil! Selamat datang, ${data.user.username}`);
+      alert(`Login berhasil! Selamat datang, ${data.user.username}`);
       navigate("/dashboard");
     } catch (err) {
       console.error(err);
-      alert("❌ Gagal menghubungi server. Cek koneksi backend FastAPI!");
+      alert("Gagal menghubungi server. Cek koneksi backend FastAPI!");
     }
   };
 
-  // === LOGIN DENGAN GOOGLE ===
   const handleGoogleLogin = () => {
     window.location.href = `${API_BASE}/auth/google/login`;
   };
 
-  // Kirim OTP ke backend
   const handleSendOTP = async () => {
     if (!email) {
       alert("⚠️ Masukkan email Anda!");
@@ -101,14 +97,13 @@ export default function LoginForm() {
       alert(data.message);
       if (res.ok) setForgotStep("otp");
     } catch (err) {
-      alert("❌ Gagal menghubungi server.");
+      alert("Gagal menghubungi server.");
     }
   };
 
-  // Verifikasi OTP ke backend
   const handleVerifyOTP = async () => {
     if (!otpCode) {
-      alert("⚠️ Masukkan kode OTP!");
+      alert("Masukkan kode OTP!");
       return;
     }
 
@@ -123,21 +118,20 @@ export default function LoginForm() {
         setForgotStep("newPassword");
       } else {
         const data = await res.json();
-        alert(`❌ ${data.detail || "OTP salah!"}`);
+        alert(`${data.detail || "OTP salah!"}`);
       }
     } catch (err) {
-      alert("❌ Gagal verifikasi OTP.");
+      alert("Gagal verifikasi OTP.");
     }
   };
 
-  // Reset password
   const handleResetPassword = async () => {
     if (newPassword !== confirmPassword) {
-      alert("❌ Password tidak cocok!");
+      alert("Kata sandi tidak cocok!");
       return;
     }
     if (newPassword.length < 6) {
-      alert("⚠️ Password minimal 6 karakter!");
+      alert("Kata sandi minimal 6 karakter!");
       return;
     }
 
@@ -149,14 +143,14 @@ export default function LoginForm() {
       });
 
       if (res.ok) {
-        alert("✅ Password berhasil diubah! Silakan login.");
+        alert("Kata sandi berhasil diubah! Silakan login.");
         closeForgotModal();
       } else {
         const data = await res.json();
-        alert(`❌ ${data.detail || "Gagal reset password"}`);
+        alert(` ${data.detail || "Gagal mengatur ulang kata sandi"}`);
       }
     } catch (err) {
-      alert("❌ Gagal reset password.");
+      alert("Gagal mengatur ulang kata sandi.");
     }
   };
 
@@ -171,17 +165,14 @@ export default function LoginForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-green-50">
-      {/* Background blur */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-0 left-0 w-64 h-64 bg-green-600 rounded-full blur-3xl"></div>
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-green-500 rounded-full blur-3xl"></div>
         <div className="absolute top-1/2 left-1/2 w-72 h-72 bg-purple-400 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Main card */}
       <div className="relative bg-white/80 backdrop-blur-md rounded-3xl shadow-2xl overflow-hidden max-w-5xl w-full">
         <div className="grid md:grid-cols-2">
-          {/* Left side */}
           <div className="bg-gradient-to-br from-white/90 to-gray-50/90 backdrop-blur-sm p-12 flex flex-col items-center justify-center relative">
             <img
               src={logo}
@@ -194,14 +185,12 @@ export default function LoginForm() {
             </h1>
           </div>
 
-          {/* Right side - login form */}
           <div className="p-12 flex flex-col justify-center bg-white/70 backdrop-blur-sm">
             <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">
-              User Login
+              Masuk Akun
             </h2>
 
             <div className="space-y-6">
-              {/* Username */}
               <div className="relative">
                 <div className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-2">
                   <User size={20} className="text-gray-600" />
@@ -221,7 +210,6 @@ export default function LoginForm() {
                 )}
               </div>
 
-              {/* Password */}
               <div className="relative">
                 <div className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-2">
                   <Lock size={20} className="text-gray-600" />
@@ -229,7 +217,7 @@ export default function LoginForm() {
                 <input
                   type="password"
                   name="password"
-                  placeholder="Password"
+                  placeholder="Kata sandi"
                   value={formData.password}
                   onChange={handleChange}
                   className={`w-full px-6 py-4 pl-16 bg-gray-100 border-2 rounded-full focus:outline-none transition-colors placeholder-gray-500 ${
@@ -241,61 +229,55 @@ export default function LoginForm() {
                 )}
               </div>
 
-              {/* Forgot Password */}
               <div className="text-right">
                 <button
                   onClick={() => setShowForgotModal(true)}
                   className="text-sm text-blue-600 hover:underline font-semibold"
                 >
-                  Forgot Password?
+                  Lupa Kata Sandi?
                 </button>
               </div>
 
-              {/* Google Login */}
               <button
                 onClick={handleGoogleLogin}
                 className="w-full flex items-center justify-center gap-3 border border-gray-300 py-3 rounded-full hover:bg-gray-100 transition-all"
               >
                 <FcGoogle size={24} />
                 <span className="font-medium text-gray-700">
-                  Login with Google
+                  Masuk dengan Google
                 </span>
               </button>
 
-              {/* Register Link */}
               <div className="text-center">
                 <p className="text-sm text-gray-500 mt-4">
-                  Don't have an account?{" "}
+                  Belum punya akun?{" "}
                   <Link
                     to="/register"
                     className="text-blue-600 hover:underline font-semibold"
                   >
-                    Sign up
+                    Daftar
                   </Link>
                 </p>
               </div>
 
-              {/* Submit Button */}
               <button
                 onClick={handleSubmit}
                 className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-bold py-4 rounded-full hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-105 shadow-lg uppercase tracking-wide"
               >
-                Login
+                Masuk
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Forgot Password Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative">
-            {/* Step 1: Email Input */}
             {forgotStep === "email" && (
               <>
                 <h3 className="text-2xl font-semibold text-gray-800 mb-4 text-center">
-                  Reset Password
+                  Atur Ulang Kata Sandi
                 </h3>
                 <p className="text-gray-600 text-center mb-6 text-sm">
                   Masukkan alamat email Anda, kami akan mengirimkan kode OTP.
@@ -306,7 +288,7 @@ export default function LoginForm() {
                   </div>
                   <input
                     type="email"
-                    placeholder="Email address"
+                    placeholder="Alamat email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full px-5 py-3 pl-14 bg-gray-100 border-2 border-gray-200 rounded-full focus:outline-none focus:border-blue-400 transition-colors"
@@ -317,19 +299,18 @@ export default function LoginForm() {
                     onClick={closeForgotModal}
                     className="px-6 py-3 bg-gray-300 rounded-full hover:bg-gray-400 transition-all font-semibold"
                   >
-                    Cancel
+                    Batal
                   </button>
                   <button
                     onClick={handleSendOTP}
                     className="px-6 py-3 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all font-semibold"
                   >
-                    Send OTP
+                    Kirim OTP
                   </button>
                 </div>
               </>
             )}
 
-            {/* Step 2: OTP Verification */}
             {forgotStep === "otp" && (
               <>
                 <h3 className="text-2xl font-semibold text-gray-800 mb-4 text-center">
@@ -359,13 +340,13 @@ export default function LoginForm() {
                     onClick={closeForgotModal}
                     className="px-6 py-3 bg-gray-300 rounded-full hover:bg-gray-400 transition-all font-semibold"
                   >
-                    Cancel
+                    Batal
                   </button>
                   <button
                     onClick={handleVerifyOTP}
                     className="px-6 py-3 bg-green-500 text-white rounded-full hover:bg-green-600 transition-all font-semibold"
                   >
-                    Verify OTP
+                    Verifikasi OTP
                   </button>
                 </div>
                 <div className="text-center mt-4">
@@ -379,14 +360,13 @@ export default function LoginForm() {
               </>
             )}
 
-            {/* Step 3: New Password */}
             {forgotStep === "newPassword" && (
               <>
                 <h3 className="text-2xl font-semibold text-gray-800 mb-4 text-center">
-                  Buat Password Baru
+                  Buat Kata Sandi Baru
                 </h3>
                 <p className="text-gray-600 text-center mb-6 text-sm">
-                  Masukkan password baru untuk akun Anda.
+                  Masukkan kata sandi baru untuk akun Anda.
                 </p>
                 <div className="space-y-4 mb-6">
                   <div className="relative">
@@ -395,7 +375,7 @@ export default function LoginForm() {
                     </div>
                     <input
                       type="password"
-                      placeholder="Password baru"
+                      placeholder="Kata sandi baru"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       className="w-full px-5 py-3 pl-14 bg-gray-100 border-2 border-gray-200 rounded-full focus:outline-none focus:border-blue-400 transition-colors"
@@ -407,7 +387,7 @@ export default function LoginForm() {
                     </div>
                     <input
                       type="password"
-                      placeholder="Konfirmasi password"
+                      placeholder="Konfirmasi kata sandi"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       className="w-full px-5 py-3 pl-14 bg-gray-100 border-2 border-gray-200 rounded-full focus:outline-none focus:border-blue-400 transition-colors"
@@ -419,13 +399,13 @@ export default function LoginForm() {
                     onClick={closeForgotModal}
                     className="px-6 py-3 bg-gray-300 rounded-full hover:bg-gray-400 transition-all font-semibold"
                   >
-                    Cancel
+                    Batal
                   </button>
                   <button
                     onClick={handleResetPassword}
                     className="px-6 py-3 bg-green-500 text-white rounded-full hover:bg-green-600 transition-all font-semibold"
                   >
-                    Reset Password
+                    Atur Ulang Kata Sandi
                   </button>
                 </div>
               </>

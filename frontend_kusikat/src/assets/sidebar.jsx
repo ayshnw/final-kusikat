@@ -1,14 +1,14 @@
 import React from "react";
 import { Home, Package } from "lucide-react";
-import { useNavigate } from "react-router-dom"; // import useNavigate
+import { useNavigate } from "react-router-dom";
 import logo from "../assets/logo_kusikat.png";
 
 const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, activeMenu, setActiveMenu }) => {
-  const navigate = useNavigate(); // hook navigate
+  const navigate = useNavigate();
 
   const menuItems = [
-    { id: "home", icon: Home, label: "Home", path: "/dashboard" },
-    { id: "food", icon: Package, label: "Food", path: "/food" },
+    { id: "home", icon: Home, label: "Beranda", path: "/dashboard" },
+    { id: "food", icon: Package, label: "Sayuran", path: "/food" },
   ];
 
   return (
@@ -20,7 +20,6 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, activeMenu, setActiveMenu })
         style={{ backgroundColor: "#192B0D" }}
       >
         <div className="flex flex-col h-full p-6">
-          {/* Logo */}
           <div className="flex items-center gap-3 mb-12 animate-fade-in">
             <div className="w-12 h-12 rounded-lg overflow-hidden shadow-lg bg-white flex items-center justify-center transform hover:scale-110 transition-transform duration-300">
               <img src={logo} alt="Logo Kusikat" className="w-10 h-10 object-contain" />
@@ -31,7 +30,6 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, activeMenu, setActiveMenu })
             </div>
           </div>
 
-          {/* Menu Items */}
           <nav className="flex-1 space-y-2">
             {menuItems.map((item, index) => (
               <button
@@ -39,7 +37,7 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, activeMenu, setActiveMenu })
                 onClick={() => {
                   setActiveMenu(item.id);
                   setIsSidebarOpen(false);
-                  navigate(item.path); // navigasi ke path
+                  navigate(item.path);
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 ${
                   activeMenu === item.id
@@ -58,7 +56,6 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, activeMenu, setActiveMenu })
         </div>
       </div>
 
-      {/* Overlay untuk mobile */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 lg:hidden z-40 backdrop-blur-sm"

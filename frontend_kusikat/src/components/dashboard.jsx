@@ -20,7 +20,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ✅ Ambil data dari backend FastAPI
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem("access_token");
@@ -28,17 +27,14 @@ const Dashboard = () => {
         ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } 
         : { "Content-Type": "application/json" };
 
-      // Ambil data terbaru
       const latestRes = await fetch("http://localhost:8000/api/sensors/latest", { headers });
-      if (!latestRes.ok) throw new Error(`Gagal ambil data terbaru: ${latestRes.status}`);
+      if (!latestRes.ok) throw new Error(`Gagal mengambil data terbaru: ${latestRes.status}`);
       const latest = await latestRes.json();
 
-      // Ambil 30 data historis terbaru
       const historyRes = await fetch("http://localhost:8000/api/sensors/history?limit=30", { headers });
-      if (!historyRes.ok) throw new Error(`Gagal ambil data historis: ${historyRes.status}`);
+      if (!historyRes.ok) throw new Error(`Gagal mengambil data historis: ${historyRes.status}`);
       const history = await historyRes.json();
 
-      // Update state
       setLatestSensor({
         temperature: latest.temperature ?? 0,
         humidity: latest.humidity ?? 0,
@@ -46,9 +42,8 @@ const Dashboard = () => {
         status: latest.status ?? "segar"
       });
 
-      // Format data untuk grafik
       const formattedHistory = history.map(entry => ({
-        time: entry.time, // format: "HH:MM"
+        time: entry.time,
         suhu: entry.suhu ?? 0,
         kelembapan: entry.kelembapan ?? 0,
         voc: entry.voc ?? 0
@@ -57,7 +52,7 @@ const Dashboard = () => {
       setChartData(formattedHistory);
       setError(null);
     } catch (err) {
-      console.error("Error fetching dashboard data:", err);
+      console.error("Error fetching dashboard ", err);
       setError(err.message || "Gagal mengambil data dari server");
     } finally {
       setLoading(false);
@@ -66,7 +61,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 5000); // refresh tiap 5 detik
+    const interval = setInterval(fetchDashboardData, 5000);
     setTimeout(() => setAnimateCards(true), 100);
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => {
@@ -129,7 +124,6 @@ const Dashboard = () => {
         <Header isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} currentTime={currentTime} />
 
         <div className="p-4 md:p-8 space-y-6">
-          {/* Welcome Banner */}
           <div className="relative overflow-hidden rounded-3xl p-8 md:p-12 shadow-2xl transform hover:scale-[1.02] transition-transform duration-300"
                style={{
                  background: 'linear-gradient(135deg, rgba(25, 43, 13, 0.85), rgba(45, 74, 24, 0.75))',
@@ -147,16 +141,14 @@ const Dashboard = () => {
                     {getGreeting()}, {getUserName()}
                   </h2>
                   <p className="text-green-100 mt-1 text-sm">
-                    Status: <span className="font-semibold">{latestSensor.status}</span> • Terakhir update: {currentTime.toLocaleTimeString()}
+                    Status: <span className="font-semibold">{latestSensor.status}</span> • Terakhir diperbarui: {currentTime.toLocaleTimeString()}
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Stats Cards */}
           <div className="flex gap-4 md:grid md:grid-cols-3 md:gap-6 overflow-x-auto px-2 md:px-0">
-            {/* Suhu */}
             <div className={`min-w-[250px] rounded-2xl p-6 shadow-xl transform transition-all duration-500 hover:scale-105 hover:shadow-2xl ${animateCards ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
                  style={{ backgroundColor: '#2d4a18', transitionDelay: '0.1s' }}>
               <div className="flex items-center justify-between mb-4">
@@ -164,14 +156,13 @@ const Dashboard = () => {
                   <Thermometer className="w-7 h-7 text-white" />
                 </div>
                 <div className="px-3 py-1 bg-white bg-opacity-15 backdrop-blur-md rounded-full">
-                  <span className="text-white text-xs font-medium">Live</span>
+                  <span className="text-white text-xs font-medium">Langsung</span>
                 </div>
               </div>
               <h3 className="text-green-200 text-sm font-medium mb-2">Suhu</h3>
               <p className="text-white text-4xl font-bold">{latestSensor.temperature.toFixed(1)}°C</p>
             </div>
 
-            {/* Kelembapan */}
             <div className={`min-w-[250px] rounded-2xl p-6 shadow-xl transform transition-all duration-500 hover:scale-105 hover:shadow-2xl ${animateCards ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
                  style={{ backgroundColor: '#2d4a18', transitionDelay: '0.2s' }}>
               <div className="flex items-center justify-between mb-4">
@@ -179,14 +170,13 @@ const Dashboard = () => {
                   <Droplets className="w-7 h-7 text-white" />
                 </div>
                 <div className="px-3 py-1 bg-white bg-opacity-15 backdrop-blur-md rounded-full">
-                  <span className="text-white text-xs font-medium">Live</span>
+                  <span className="text-white text-xs font-medium">Langsung</span>
                 </div>
               </div>
               <h3 className="text-green-200 text-sm font-medium mb-2">Kelembapan</h3>
               <p className="text-white text-4xl font-bold">{latestSensor.humidity.toFixed(1)} %RH</p>
             </div>
 
-            {/* VOC */}
             <div className={`min-w-[250px] rounded-2xl p-6 shadow-xl transform transition-all duration-500 hover:scale-105 hover:shadow-2xl ${animateCards ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
                  style={{ backgroundColor: '#2d4a18', transitionDelay: '0.3s' }}>
               <div className="flex items-center justify-between mb-4">
@@ -194,7 +184,7 @@ const Dashboard = () => {
                   <Zap className="w-7 h-7 text-white" />
                 </div>
                 <div className="px-3 py-1 bg-white bg-opacity-15 backdrop-blur-md rounded-full">
-                  <span className="text-white text-xs font-medium">Live</span>
+                  <span className="text-white text-xs font-medium">Langsung</span>
                 </div>
               </div>
               <h3 className="text-green-200 text-sm font-medium mb-2">VOC</h3>
@@ -203,7 +193,6 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Chart */}
           <div className="rounded-3xl p-6 md:p-8 shadow-2xl border border-gray-200"
                style={{ backgroundColor: '#5a7052' }}>
             <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
@@ -223,57 +212,61 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="bg-white rounded-2xl p-6 shadow-inner">
+            <div className="bg-white rounded-2xl p-4 shadow-inner">
               {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={350}>
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="colorSuhu" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ec9bb6" stopOpacity={0.5}/>
-                        <stop offset="95%" stopColor="#ec9bb6" stopOpacity={0.05}/>
-                      </linearGradient>
-                      <linearGradient id="colorKelembapan" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#93c5fd" stopOpacity={0.5}/>
-                        <stop offset="95%" stopColor="#93c5fd" stopOpacity={0.05}/>
-                      </linearGradient>
-                      <linearGradient id="colorVOC" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.5}/>
-                        <stop offset="95%" stopColor="#fbbf24" stopOpacity={0.05}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
-                    <XAxis 
-                      dataKey="time" 
-                      stroke="#6b7280" 
-                      tick={{ fill: '#6b7280' }} 
-                      style={{ fontSize: '11px' }} 
-                    />
-                    <YAxis 
-                      domain={[0, 'auto']} 
-                      stroke="#6b7280" 
-                      tick={{ fill: '#6b7280' }} 
-                      style={{ fontSize: '11px' }} 
-                    />
-                    <Tooltip 
-                      formatter={(value, name) => {
-                        if (name === 'voc') return [parseFloat(value).toFixed(1), 'VOC (ppm)'];
-                        if (name === 'suhu') return [`${parseFloat(value).toFixed(1)}°C`, 'Suhu'];
-                        if (name === 'kelembapan') return [`${parseFloat(value).toFixed(1)}%`, 'Kelembapan'];
-                        return [value, name];
-                      }}
-                      contentStyle={{ 
-                        backgroundColor: '#ffffff', 
-                        border: '1px solid #e5e7eb', 
-                        borderRadius: '12px', 
-                        fontSize: '12px', 
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' 
-                      }} 
-                    />
-                    <Area type="monotone" dataKey="suhu" stroke="#ec9bb6" strokeWidth={2.5} fill="url(#colorSuhu)" />
-                    <Area type="monotone" dataKey="kelembapan" stroke="#93c5fd" strokeWidth={2.5} fill="url(#colorKelembapan)" />
-                    <Area type="monotone" dataKey="voc" stroke="#fbbf24" strokeWidth={2.5} fill="url(#colorVOC)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <div className="overflow-x-auto">
+                  <div style={{ minWidth: '600px' }}>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient id="colorSuhu" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ec9bb6" stopOpacity={0.5}/>
+                            <stop offset="95%" stopColor="#ec9bb6" stopOpacity={0.05}/>
+                          </linearGradient>
+                          <linearGradient id="colorKelembapan" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#93c5fd" stopOpacity={0.5}/>
+                            <stop offset="95%" stopColor="#93c5fd" stopOpacity={0.05}/>
+                          </linearGradient>
+                          <linearGradient id="colorVOC" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.5}/>
+                            <stop offset="95%" stopColor="#fbbf24" stopOpacity={0.05}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
+                        <XAxis 
+                          dataKey="time" 
+                          stroke="#6b7280" 
+                          tick={{ fill: '#6b7280' }} 
+                          style={{ fontSize: '11px' }} 
+                        />
+                        <YAxis 
+                          domain={[0, 'auto']} 
+                          stroke="#6b7280" 
+                          tick={{ fill: '#6b7280' }} 
+                          style={{ fontSize: '11px' }} 
+                        />
+                        <Tooltip 
+                          formatter={(value, name) => {
+                            if (name === 'voc') return [parseFloat(value).toFixed(1), 'VOC (ppm)'];
+                            if (name === 'suhu') return [`${parseFloat(value).toFixed(1)}°C`, 'Suhu'];
+                            if (name === 'kelembapan') return [`${parseFloat(value).toFixed(1)}%`, 'Kelembapan'];
+                            return [value, name];
+                          }}
+                          contentStyle={{ 
+                            backgroundColor: '#ffffff', 
+                            border: '1px solid #e5e7eb', 
+                            borderRadius: '12px', 
+                            fontSize: '12px', 
+                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' 
+                          }} 
+                        />
+                        <Area type="monotone" dataKey="suhu" stroke="#ec9bb6" strokeWidth={2.5} fill="url(#colorSuhu)" />
+                        <Area type="monotone" dataKey="kelembapan" stroke="#93c5fd" strokeWidth={2.5} fill="url(#colorKelembapan)" />
+                        <Area type="monotone" dataKey="voc" stroke="#fbbf24" strokeWidth={2.5} fill="url(#colorVOC)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               ) : (
                 <div className="flex items-center justify-center h-64 text-gray-500">Tidak ada data historis</div>
               )}

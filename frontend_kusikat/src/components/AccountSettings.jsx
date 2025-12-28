@@ -6,17 +6,14 @@ const AccountSettings = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Form states
   const [phone, setPhone] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [tempPassword, setTempPassword] = useState('');
 
-  // Notification
   const [message, setMessage] = useState('');
 
-  // Fetch user data
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -27,7 +24,7 @@ const AccountSettings = () => {
           headers: { Authorization: `Bearer ${token}` }
         });
 
-        if (!res.ok) throw new Error('Gagal memuat data user');
+        if (!res.ok) throw new Error('Gagal memuat data pengguna');
         const data = await res.json();
         setUser(data);
         setPhone(data.phone_number || '');
@@ -46,7 +43,6 @@ const AccountSettings = () => {
     setTimeout(() => setMessage(''), 4000);
   };
 
-  // --- Update Phone ---
   const handleUpdatePhone = async (e) => {
     e.preventDefault();
     try {
@@ -55,14 +51,13 @@ const AccountSettings = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ phone_number: phone })
       });
 
       if (res.ok) {
         showMessage('Nomor telepon berhasil diperbarui!');
-        // Opsional: update localStorage
         const userStr = localStorage.getItem('user');
         if (userStr) {
           const updatedUser = { ...JSON.parse(userStr), phone_number: phone };
@@ -77,11 +72,10 @@ const AccountSettings = () => {
     }
   };
 
-  // --- Set Password (untuk akun Google) ---
   const handleSetPassword = async (e) => {
     e.preventDefault();
     if (tempPassword.length < 6) {
-      return showMessage('Password minimal 6 karakter', true);
+      return showMessage('Kata sandi minimal 6 karakter', true);
     }
 
     try {
@@ -90,31 +84,30 @@ const AccountSettings = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ new_password: tempPassword })
       });
 
       if (res.ok) {
-        showMessage('Password berhasil diatur!');
-        setUser(prev => ({ ...prev, has_password: true }));
+        showMessage('Kata sandi berhasil diatur!');
+        setUser((prev) => ({ ...prev, has_password: true }));
       } else {
         const err = await res.json();
-        showMessage(err.detail || 'Gagal mengatur password', true);
+        showMessage(err.detail || 'Gagal mengatur kata sandi', true);
       }
     } catch (err) {
       showMessage('Terjadi kesalahan jaringan', true);
     }
   };
 
-  // --- Change Password ---
   const handleChangePassword = async (e) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      return showMessage('Password baru dan konfirmasi tidak cocok', true);
+      return showMessage('Kata sandi baru dan konfirmasi tidak cocok', true);
     }
     if (newPassword.length < 6) {
-      return showMessage('Password minimal 6 karakter', true);
+      return showMessage('Kata sandi minimal 6 karakter', true);
     }
 
     try {
@@ -123,20 +116,19 @@ const AccountSettings = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
       });
 
       if (res.ok) {
-        showMessage('Password berhasil diubah!');
-        // Kosongkan form
+        showMessage('Kata sandi berhasil diubah!');
         setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
         const err = await res.json();
-        showMessage(err.detail || 'Gagal mengganti password', true);
+        showMessage(err.detail || 'Gagal mengganti kata sandi', true);
       }
     } catch (err) {
       showMessage('Terjadi kesalahan jaringan', true);
@@ -148,7 +140,6 @@ const AccountSettings = () => {
 
   return (
     <div className="space-y-8">
-      {/* Ubah Nomor Telepon */}
       <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 shadow-lg border border-white/20">
         <h3 className="text-white text-xl font-bold mb-4">Nomor Telepon</h3>
         <form onSubmit={handleUpdatePhone} className="space-y-3">
@@ -168,10 +159,9 @@ const AccountSettings = () => {
         </form>
       </div>
 
-      {/* Atur atau Ganti Password */}
       <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 shadow-lg border border-white/20">
         <h3 className="text-white text-xl font-bold mb-4">
-          {user.has_password ? 'Ganti Password' : 'Atur Password'}
+          {user.has_password ? 'Ganti Kata Sandi' : 'Atur Kata Sandi'}
         </h3>
 
         {user.has_password ? (
@@ -180,28 +170,28 @@ const AccountSettings = () => {
               type="password"
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
-              placeholder="Password lama"
+              placeholder="Kata sandi lama"
               className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-400"
             />
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Password baru"
+              placeholder="Kata sandi baru"
               className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-400"
             />
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Konfirmasi password baru"
+              placeholder="Konfirmasi kata sandi baru"
               className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-400"
             />
             <button
               type="submit"
               className="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-white font-medium transition"
             >
-              Ganti Password
+              Ganti Kata Sandi
             </button>
           </form>
         ) : (
@@ -210,20 +200,19 @@ const AccountSettings = () => {
               type="password"
               value={tempPassword}
               onChange={(e) => setTempPassword(e.target.value)}
-              placeholder="Buat password baru"
+              placeholder="Buat kata sandi baru"
               className="w-full p-3 rounded-lg bg-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-400"
             />
             <button
               type="submit"
               className="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-white font-medium transition"
             >
-              Atur Password
+              Atur Kata Sandi
             </button>
           </form>
         )}
       </div>
 
-      {/* Notifikasi */}
       {message && (
         <div
           className={`fixed bottom-4 right-4 px-4 py-2 rounded-lg text-white font-medium shadow-lg ${

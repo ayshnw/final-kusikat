@@ -1,32 +1,48 @@
 # === Environment & Secrets ===
-.env
-.env.*
-!.env.example          # ← contoh struktur, BOLEH di-commit
+# Abaikan semua .env di semua direktori, termasuk subfolder
+**/.env
+**/.env.*
+# Tapi izinkan contoh struktur (boleh di-commit)
+!.env.example
+!**/.env.example
+
+# File konfigurasi sensitif lainnya
 secrets.json
 config.local.json
+credentials.json
+*.pem
+*.key
+*.secret
 
 # === Python ===
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.log
 
-# Virtual environment (pilih salah satu yang kamu pakai)
+# === Virtual Environment ===
 venv/
 .venv/
 ENV/
+env/
+.env/
 
-# === Dependency management ===
+# === Dependency Management ===
 .Python
 pip-log.txt
 pip-delete-this-directory.txt
-requirements.txt.lock   # ← jika pakai pip-compile, lock file bisa di-commit; tapi ini opsional
+# Jika kamu pakai lock file, biarkan requirements.txt.lock (opsional)
 
-# === Database files (lokal) ===
+# === Database Lokal ===
 *.sqlite3
 *.db
 *.dump
 
-# === Logs ===
+# === Logs & Cache ===
 logs/
 *.log
 
@@ -37,14 +53,10 @@ logs/
 *.swo
 .DS_Store
 Thumbs.db
+*.sublime-project
+*.sublime-workspace
 
-# === Testing & Coverage ===
-.coverage
-htmlcov/
-.pytest_cache/
-.coverage.*
-
-# === FastAPI / ASGI ===
+# === FastAPI / ASGI / Runtime ===
 *.pid
 *.sock
 
@@ -52,3 +64,14 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+*.whl
+MANIFEST.in
+
+# === Misc ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

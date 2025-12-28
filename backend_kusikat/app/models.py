@@ -1,24 +1,23 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, Date, ForeignKey, Enum
+from sqlalchemy.sql import func
 from app.database import Base
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Date
-from sqlalchemy.sql import func
-from .database import Base
-
-class Notification(Base):
-    __tablename__ = "notifications"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False)
-    title = Column(String(255), nullable=False)
-    message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    is_read = Column(Boolean, default=False)
-    sent_at = Column(DateTime, nullable=True)
-    sent_date = Column(Date, nullable=True)  # ← Pastikan ini ada!
+from enum import Enum as PyEnum
 
 
-# Tabel User
+# =============== ENUMS ===============
+class SenderType(PyEnum):
+    user = "user"
+    bot = "bot"
+
+
+class MessageType(PyEnum):
+    text = "text"
+    recipe = "recipe"
+
+
+# =============== MODELS ===============
+
 class User(Base):
     __tablename__ = "users"
 
@@ -32,7 +31,6 @@ class User(Base):
     reset_expires = Column(DateTime, nullable=True)
 
 
-# Tabel Sensor — dengan kolom status tambahan
 class Sensor(Base):
     __tablename__ = "sensors"
     
@@ -40,12 +38,24 @@ class Sensor(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     temperature = Column(Float)
     humidity = Column(Float)
-    voc = Column(Float)  # nilai VOC dalam ppm
-    status = Column(String(20), nullable=True)  # ✅ TAMBAHAN: "segar", "mulai_layu", "hampir_busuk", "busuk"
+    voc = Column(Float)  
+    status = Column(String(20), nullable=True)  
     recorded_at = Column(DateTime, default=datetime.utcnow)
 
 
-# Tabel Password Reset Token
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    is_read = Column(Boolean, default=False)
+    sent_at = Column(DateTime, nullable=True)
+    sent_date = Column(Date, nullable=True)
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 
@@ -53,3 +63,17 @@ class PasswordResetToken(Base):
     email = Column(String(120), nullable=False, index=True)
     otp = Column(String(6), nullable=False)
     expires_at = Column(DateTime, nullable=False)
+
+
+class ChatHistory(Base):
+    __tablename__ = "chat_histories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message_type = Column(String(10), nullable=False, default="text") 
+    sender = Column(String(10), nullable=False)                        
+    content = Column(Text, nullable=True)          
+    recipe_name = Column(String(255), nullable=True)
+    ingredients = Column(Text, nullable=True)      
+    steps = Column(Text, nullable=True)         
+    created_at = Column(DateTime, default=func.now(), nullable=False)
