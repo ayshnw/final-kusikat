@@ -17,7 +17,8 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
   });
 
   const [loading, setLoading] = useState(true);
-  const [newPhone, setNewPhone] = useState("");
+  const [newUsername, setNewUsername] = useState(""); // ✅ untuk username
+  const [newPhone, setNewPhone] = useState("");       // ✅ untuk phone
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -42,12 +43,16 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
 
         if (res.ok) {
           const data = await res.json();
+          const username = data.username || "Pengguna";
+          const phone = data.phone_number || "";
           setUser({
-            name: data.username || "Pengguna",
-            phone: data.phone_number || "",
+            name: username,
+            phone,
             has_password: data.has_password,
             email: data.email,
           });
+          setNewUsername(username); // ✅ init state
+          setNewPhone(phone);       // ✅ init state
         }
       } catch (err) {
         console.error("Gagal mengambil data pengguna:", err);
@@ -141,18 +146,43 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
       }
     }
 
-    localStorage.removeItem("user");
     localStorage.removeItem("access_token");
     navigate("/login", { replace: true });
   };
 
-  const handleSavePhone = async (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem("access_token");
     if (!token) return;
 
+    const username = newUsername.trim();
+    if (username.length < 3) {
+      alert("✗ Username minimal 3 karakter");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_\- .']+$/.test(username)) {
+      alert("✗ Username hanya boleh huruf, angka, spasi, _, -, ., atau '");
+      return;
+    }
+
     try {
-      const res = await fetch("http://localhost:8000/api/user/phone", {
+      // 1. Update username
+      const res1 = await fetch("http://localhost:8000/api/user/username", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username }),
+      });
+
+      if (!res1.ok) {
+        const err = await res1.json();
+        throw new Error(err.detail || "Gagal mengubah username");
+      }
+
+      // 2. Update phone
+      const res2 = await fetch("http://localhost:8000/api/user/phone", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -161,16 +191,17 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
         body: JSON.stringify({ phone_number: newPhone }),
       });
 
-      if (res.ok) {
-        setUser((prev) => ({ ...prev, phone: newPhone }));
-        setIsEditing(false);
-        alert("Nomor telepon berhasil diperbarui!");
-      } else {
-        const err = await res.json();
-        alert(err.detail || "Gagal mengubah nomor telepon");
+      if (!res2.ok) {
+        const err = await res2.json();
+        throw new Error(err.detail || "Gagal mengubah nomor telepon");
       }
+
+      // 3. Update state lokal
+      setUser((prev) => ({ ...prev, name: username, phone: newPhone }));
+      setIsEditing(false);
+      alert("✓ Profil berhasil diperbarui!");
     } catch (err) {
-      alert("Terjadi kesalahan jaringan");
+      alert(`✗ ${err.message}`);
     }
   };
 
@@ -181,16 +212,16 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
 
     if (user.has_password) {
       if (newPassword !== confirmPassword) {
-        alert("Kata sandi baru dan konfirmasi tidak cocok!");
+        alert("✗ Kata sandi baru dan konfirmasi tidak cocok!");
         return;
       }
       if (newPassword.length < 6) {
-        alert("Kata sandi minimal 6 karakter");
+        alert("✗ Kata sandi minimal 6 karakter");
         return;
       }
     } else {
       if (tempPassword.length < 6) {
-        alert("Kata sandi minimal 6 karakter");
+        alert("✗ Kata sandi minimal 6 karakter");
         return;
       }
     }
@@ -218,14 +249,14 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
       }
 
       if (res.ok) {
-        alert("Kata sandi berhasil disimpan! Anda akan logout dan diminta login ulang.");
+        alert("✓ Kata sandi berhasil disimpan! Anda akan logout dan diminta login ulang.");
         handleLogout();
       } else {
         const err = await res.json();
-        alert(err.detail || "Gagal menyimpan kata sandi");
+        alert(err.detail || "✗ Gagal menyimpan kata sandi");
       }
     } catch (err) {
-      alert("Terjadi kesalahan jaringan");
+      alert("✗ Terjadi kesalahan jaringan");
     }
   };
 
@@ -356,6 +387,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
                 </div>
 
                 <div className="p-2 flex flex-col gap-1">
+                  {/* ✅ Hanya 3 opsi: Edit Profil, Ubah/Atur Password, Logout */}
                   {!isEditing && !isChangingPassword ? (
                     <>
                       <button
@@ -378,8 +410,17 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
                       </button>
                     </>
                   ) : isEditing ? (
-                    <form onSubmit={handleSavePhone} className="flex flex-col gap-2 px-4 py-2">
-                      <label className="text-xs text-gray-500">Nomor HP</label>
+                    // ✅ Form 2 field: Username (atas) + Nomor HP (bawah)
+                    <form onSubmit={handleSaveProfile} className="flex flex-col gap-2 px-4 py-2">
+                      <label className="text-xs text-gray-500">Username</label>
+                      <input
+                        type="text"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm"
+                        placeholder="Contoh: Yang_Mulia"
+                      />
+                      <label className="text-xs text-gray-500 mt-2">Nomor HP</label>
                       <input
                         type="text"
                         value={newPhone}
@@ -387,7 +428,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
                         className="border border-gray-300 rounded px-2 py-1 text-sm"
                         placeholder="Contoh: 081234567890"
                       />
-                      <div className="flex justify-between gap-2 mt-2">
+                      <div className="flex justify-between gap-2 mt-3">
                         <button
                           type="submit"
                           className="flex-1 bg-green-500 text-white text-sm px-2 py-1 rounded hover:bg-green-600"
@@ -398,6 +439,7 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
                           type="button"
                           onClick={() => {
                             setIsEditing(false);
+                            setNewUsername(user.name);
                             setNewPhone(user.phone);
                           }}
                           className="flex-1 bg-gray-200 text-gray-700 text-sm px-2 py-1 rounded hover:bg-gray-300"
@@ -469,7 +511,8 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
         </div>
       </div>
 
-      {(isNotificationOpen || isProfileOpen || showLogoutConfirm) && (
+      {/* ✅ Backdrop: reset semua state modal */}
+      {(isNotificationOpen || isProfileOpen || showLogoutConfirm || isEditing || isChangingPassword) && (
         <div
           className="fixed inset-0 z-40 bg-black bg-opacity-40"
           onClick={() => {

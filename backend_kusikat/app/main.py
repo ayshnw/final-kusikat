@@ -16,6 +16,7 @@ from email.mime.multipart import MIMEMultipart
 from contextlib import asynccontextmanager
 import requests
 from typing import List
+import re
 
 # === ROUTES ===
 from app.routes.ai import router as ai_router
@@ -432,6 +433,40 @@ def update_phone(request: UpdatePhoneRequest, user: User = Depends(get_current_u
     db.commit()
     return {"message": "Nomor telepon diperbarui"}
 
+@app.put("/api/user/username")
+def update_username(
+    request: dict = Body(..., example={"username": "Firli Hanifurahman"}),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    new_username = request.get("username", "").strip()
+
+    # Validasi
+    if not new_username:
+        raise HTTPException(400, "Username tidak boleh kosong")
+    if len(new_username) < 3:
+        raise HTTPException(400, "Username minimal 3 karakter")
+    if len(new_username) > 50:
+        raise HTTPException(400, "Username maksimal 50 karakter")
+    if not re.match(r"^[a-zA-Z0-9_\- .']+$", new_username):
+        raise HTTPException(400, "Username hanya boleh berisi huruf, angka, spasi, _, -, ., atau '")
+
+    # Cek duplikat (kecuali diri sendiri)
+    existing = db.query(User).filter(
+        User.username == new_username,
+        User.id != current_user.id
+    ).first()
+    if existing:
+        raise HTTPException(409, "Username sudah digunakan oleh pengguna lain")
+
+    # Update
+    current_user.username = new_username
+    db.commit()
+
+    return {
+        "message": "Username berhasil diperbarui",
+        "username": new_username
+    }
 
 # ==================== SENSOR ENDPOINTS ====================
 @app.post("/api/sensors/", status_code=status.HTTP_201_CREATED)
