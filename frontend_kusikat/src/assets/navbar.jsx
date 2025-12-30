@@ -133,22 +133,11 @@ const Navbar = ({ isSidebarOpen, setIsSidebarOpen, currentTime }) => {
     return `${Math.floor(diffMins / 1440)} hari yang lalu`;
   };
 
-  const handleLogout = async () => {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      try {
-        await fetch("http://localhost:8000/api/logout", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch (err) {
-        console.error("Logout API call failed:", err);
-      }
-    }
-
-    localStorage.removeItem("access_token");
-    navigate("/login", { replace: true });
-  };
+  const handleLogout = () => {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("user"); // opsional
+  navigate("/login", { replace: true });
+};
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();

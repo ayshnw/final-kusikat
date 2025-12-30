@@ -6,7 +6,7 @@ import time
 import sys
 
 # Konfigurasi
-SERIAL_PORT = "COM6"        # GANTI SESUAI PORT ESP32 KAMU
+SERIAL_PORT = "COM7"        # GANTI SESUAI PORT ESP32 KAMU
 BAUD_RATE = 115200
 FASTAPI_URL = "http://localhost:8000/api/sensors/"
 

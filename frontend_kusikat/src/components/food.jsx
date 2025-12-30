@@ -6,7 +6,7 @@ import Navbar from "../assets/navbar";
 const VegetableImage = ({ image_path }) => {
   const imageUrl = image_path
     ? `http://localhost:8000${image_path.startsWith('/') ? image_path : `/${image_path}`}`
-    : `/assets/bayam.jpg`;
+    : `src/assets/bayam.jpg`;
 
   return (
     <img
