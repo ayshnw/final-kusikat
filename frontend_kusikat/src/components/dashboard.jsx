@@ -43,7 +43,11 @@ const Dashboard = () => {
       });
 
       const formattedHistory = history.map(entry => ({
-        time: entry.time,
+        time: new Date(entry.timestamp).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }),
         suhu: entry.suhu ?? 0,
         kelembapan: entry.kelembapan ?? 0,
         voc: entry.voc ?? 0

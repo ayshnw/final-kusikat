@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends, status, Body
+from fastapi import FastAPI, HTTPException, Depends, status, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -64,7 +64,10 @@ def get_db():
     finally:
         db.close()
 
+# 🔥 VALIDASI SECRET_KEY
 SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("❌ SECRET_KEY belum diset di environment!")
 ALGORITHM = "HS256"
 security = HTTPBearer()
 
@@ -86,6 +89,29 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
     return user
+
+
+# 🔥 FUNGSI VALIDASI NOMOR TELEPON (tanpa lib tambahan)
+def clean_phone_number(raw: str) -> str:
+    """
+    Normalisasi & validasi nomor:
+    - Hapus spasi/simbol
+    - 08xx → +628xx
+    - Pastikan format: +628[8-12 digit]
+    """
+    if not raw or not isinstance(raw, str):
+        raise ValueError("Nomor telepon wajib diisi")
+    # Hapus semua non-digit kecuali '+' di awal
+    cleaned = re.sub(r"[^\d+]", "", raw.strip())
+    # Konversi 08 → +628
+    if cleaned.startswith("0"):
+        cleaned = "62" + cleaned[1:]
+    if cleaned.startswith("62"):
+        cleaned = "+" + cleaned
+    # Validasi: +628 diikuti 8-12 digit
+    if not re.match(r"^\+628[0-9]{8,12}$", cleaned):
+        raise ValueError("Nomor telepon tidak valid (contoh: 081234567890)")
+    return cleaned
 
 
 # === Fungsi Kirim WA saat Status Berubah ===
@@ -119,11 +145,9 @@ def _send_wa_if_status_changed(
         return
 
     try:
-        clean_phone = phone.strip()
-        if clean_phone.startswith("0"):
-            clean_phone = "62" + clean_phone[1:]
+        clean_phone = clean_phone_number(phone)  # ✅ pakai fungsi validasi
 
-        # 🔥 DIPERBAIKI: Hapus spasi di akhir URL!
+        # 🔥 FIXED: URL tanpa spasi!
         url = "https://api.aliffajriadi.my.id/botwa/api/kirim-pesan"
         headers = {
             "Content-Type": "application/json",
@@ -144,7 +168,7 @@ def _send_wa_if_status_changed(
             db.commit()
             print(f"✅ Notifikasi status '{title}' terkirim dan disimpan ke DB.")
         else:
-            print(f"❌ Gagal kirim WA: {response.text}")
+            print(f"❌ Gagal kirim WA [{response.status_code}]: {response.text}")
 
     except Exception as e:
         print(f"Error kirim WA status change: {e}")
@@ -155,6 +179,30 @@ def _send_wa_if_status_changed(
 async def lifespan(app: FastAPI):
     print("✅ Membuat tabel database...")
     Base.metadata.create_all(bind=engine)
+    
+    # 🔥 Auto-create user ID=1 untuk IoT (jika belum ada)
+    db = SessionLocal()
+    try:
+        default_user = db.query(User).filter(User.id == 1).first()
+        if not default_user:
+            print("⚠️  Membuat user default (id=1) untuk IoT...")
+            default_user = User(
+                id=1,
+                username="iot_device",
+                email="iot@resqfreeze.local",
+                password=None,
+                phone_number="081234567890"  # bisa di-update via API
+            )
+            db.add(default_user)
+            db.commit()
+            print("✅ User default (id=1) berhasil dibuat.")
+        else:
+            print("✅ User default (id=1) sudah ada.")
+    except Exception as e:
+        print(f"❌ Gagal create user default: {e}")
+    finally:
+        db.close()
+
     print("✅ Database siap.")
     yield
 
@@ -249,10 +297,6 @@ def get_user_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Ambil semua notifikasi untuk pengguna yang sedang login,
-    diurutkan dari terbaru ke terlama.
-    """
     notifications = db.query(Notification)\
                       .filter(Notification.user_id == current_user.id)\
                       .order_by(Notification.sent_at.desc())\
@@ -357,13 +401,15 @@ def request_otp(
     if not phone_number:
         raise HTTPException(400, "Nomor telepon wajib diisi")
 
-    clean_phone = phone_number.strip()
-    if clean_phone.startswith("0"):
-        clean_phone = "62" + clean_phone[1:]
+    try:
+        clean_phone = clean_phone_number(phone_number)  # ✅ validasi
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     otp = str(random.randint(100000, 999999))
 
     try:
+        # 🔥 FIXED: URL tanpa spasi!
         url = "https://api.aliffajriadi.my.id/botwa/api/kirim-pesan"
         headers = {
             "Content-Type": "application/json",
@@ -429,6 +475,10 @@ def change_password(request: ChangePasswordRequest, user: User = Depends(get_cur
 
 @app.put("/api/user/phone")
 def update_phone(request: UpdatePhoneRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        request.phone_number = clean_phone_number(request.phone_number)  # ✅ validasi saat update
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     user.phone_number = request.phone_number
     db.commit()
     return {"message": "Nomor telepon diperbarui"}
@@ -440,8 +490,6 @@ def update_username(
     db: Session = Depends(get_db)
 ):
     new_username = request.get("username", "").strip()
-
-    # Validasi
     if not new_username:
         raise HTTPException(400, "Username tidak boleh kosong")
     if len(new_username) < 3:
@@ -451,7 +499,6 @@ def update_username(
     if not re.match(r"^[a-zA-Z0-9_\- .']+$", new_username):
         raise HTTPException(400, "Username hanya boleh berisi huruf, angka, spasi, _, -, ., atau '")
 
-    # Cek duplikat (kecuali diri sendiri)
     existing = db.query(User).filter(
         User.username == new_username,
         User.id != current_user.id
@@ -459,7 +506,6 @@ def update_username(
     if existing:
         raise HTTPException(409, "Username sudah digunakan oleh pengguna lain")
 
-    # Update
     current_user.username = new_username
     db.commit()
 
@@ -474,7 +520,7 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     default_user_id = 1
     user = db.query(User).filter(User.id == default_user_id).first()
     if not user:
-        raise HTTPException(status_code=400, detail="User default (id=1) tidak ditemukan")
+        raise HTTPException(status_code=500, detail="User default (id=1) tidak ditemukan — cek lifespan!")
 
     if data.voc < 50:
         new_status = "segar"
@@ -501,13 +547,15 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     )
     db.add(sensor)
 
-    total = db.query(Sensor).count()
+    total = db.query(Sensor).filter(Sensor.user_id == default_user_id).count()
     if total > 100:
         recent_ids = db.query(Sensor.id)\
+                       .filter(Sensor.user_id == default_user_id)\
                        .order_by(Sensor.recorded_at.desc())\
                        .limit(100)\
                        .subquery()
         db.query(Sensor)\
+          .filter(Sensor.user_id == default_user_id)\
           .filter(~Sensor.id.in_(db.query(recent_ids.c.id)))\
           .delete(synchronize_session=False)
 
@@ -554,21 +602,30 @@ def get_latest_sensor(db: Session = Depends(get_db)):
     }
 
 @app.get("/api/sensors/history")
-def get_sensor_history(limit: int = 12, db: Session = Depends(get_db)):
-    limit = min(limit, 100)
-    data = db.query(Sensor).filter(Sensor.user_id == 1)\
-                          .order_by(Sensor.recorded_at.desc()).limit(limit).all()[::-1]
+def get_sensor_history(
+    limit: int = Query(12, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 🔥 FIXED: ambil terbaru dulu, lalu reverse → urut waktu lama → baru
+    data = (
+        db.query(Sensor)
+        .filter(Sensor.user_id == current_user.id)
+        .order_by(Sensor.recorded_at.desc())  # DESC
+        .limit(limit)
+        .all()
+    )[::-1]  # reverse → ASC
+
     return [
         {
-            "time": d.recorded_at.strftime("%H:%M") if d.recorded_at else "00:00",
-            "suhu": float(d.temperature) if d.temperature is not None else 0.0,
-            "kelembapan": float(d.humidity) if d.humidity is not None else 0.0,
-            "voc": float(d.voc) if d.voc is not None else 0.0,
-            "status": d.status or "segar" 
+            "timestamp": d.recorded_at.isoformat() if d.recorded_at else None,
+            "suhu": float(d.temperature) if d.temperature is not None else None,
+            "kelembapan": float(d.humidity) if d.humidity is not None else None,
+            "voc": float(d.voc) if d.voc is not None else None,
+            "status": d.status or "unknown"
         }
         for d in data
     ]
-
 
 @app.post("/api/send-notification")
 def send_notification_to_wa(
@@ -584,11 +641,13 @@ def send_notification_to_wa(
     if not phone:
         raise HTTPException(400, "Nomor telepon tidak ditemukan. Silakan lengkapi profil Anda.")
 
-    clean_phone = phone.strip()
-    if clean_phone.startswith("0"):
-        clean_phone = "62" + clean_phone[1:]
+    try:
+        clean_phone = clean_phone_number(phone)  # ✅ validasi
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     try:
+        # 🔥 FIXED: URL tanpa spasi!
         url = "https://api.aliffajriadi.my.id/botwa/api/kirim-pesan"
         headers = {
             "Content-Type": "application/json",
