@@ -81,8 +81,9 @@ export default function KusiKatLanding() {
 
       <nav className={`relative z-50 flex items-center justify-between p-6 md:p-8 bg-white/70 backdrop-blur-xl border-b border-emerald-100 transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
         <div className="flex items-center gap-3 hover:scale-105 transition-transform duration-300 cursor-pointer group" onClick={() => navigate('/')}>
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-white to-[#192B0D] flex items-center justify-center shadow-lg group-hover:shadow-xl group-hover:rotate-12 transition-all duration-300">
-            <img src={logo} alt="ResQ Frezee" className="w-8 h-8 object-contain" />
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-white to-[#192B0D] flex items-center justify-center shadow-lg group-hover:shadow-xl group-hover:rotate-12 transition-all duration-300">
+            <img 
+              src={logo} alt="ResQ Frezee" className="w-full h-full object-contain p-1" />
           </div>
           <span className="text-2xl font-bold text-[#192B0D]">ResQ Frezee</span>
         </div>

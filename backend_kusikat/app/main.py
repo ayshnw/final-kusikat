@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends, status, Body, Query
+from fastapi import FastAPI, HTTPException, Depends, status, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from contextlib import asynccontextmanager
 import requests
-from typing import List
+from typing import List, Optional
 import re
 
 # === ROUTES ===
@@ -514,14 +514,22 @@ def update_username(
         "username": new_username
     }
 
-# ==================== SENSOR ENDPOINTS ====================
+# ==================== 🔥 SENSOR ENDPOINTS (SHARED GLOBAL) ====================
 @app.post("/api/sensors/", status_code=status.HTTP_201_CREATED)
-def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
-    default_user_id = 1
-    user = db.query(User).filter(User.id == default_user_id).first()
+def create_sensor_data(
+    data: SensorDataCreate,
+    db: Session = Depends(get_db)
+):
+    # 🔥 HARD CODE ke user_id = 1 (semua data masuk ke user 1)
+    user_id = 1
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=500, detail="User default (id=1) tidak ditemukan — cek lifespan!")
+        raise HTTPException(
+            status_code=500,
+            detail="User default (id=1) tidak ditemukan — jalankan ulang server untuk create otomatis."
+        )
 
+    # 🔥 Hitung status berdasarkan VOC
     if data.voc < 50:
         new_status = "segar"
     elif data.voc < 150:
@@ -533,12 +541,14 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
 
     recorded_at = datetime.now(timezone(timedelta(hours=7)))
 
-    last_sensor = db.query(Sensor).filter(Sensor.user_id == default_user_id)\
+    # 🔥 Ambil status sebelumnya
+    last_sensor = db.query(Sensor).filter(Sensor.user_id == user_id)\
                                  .order_by(Sensor.recorded_at.desc()).first()
     previous_status = last_sensor.status if last_sensor else new_status
 
+    # 🔥 Simpan data
     sensor = Sensor(
-        user_id=default_user_id,
+        user_id=user_id,
         temperature=data.temperature,
         humidity=data.humidity,
         voc=data.voc,
@@ -547,21 +557,23 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     )
     db.add(sensor)
 
-    total = db.query(Sensor).filter(Sensor.user_id == default_user_id).count()
+    # 🔥 Batasi 100 data
+    total = db.query(Sensor).filter(Sensor.user_id == user_id).count()
     if total > 100:
         recent_ids = db.query(Sensor.id)\
-                       .filter(Sensor.user_id == default_user_id)\
+                       .filter(Sensor.user_id == user_id)\
                        .order_by(Sensor.recorded_at.desc())\
                        .limit(100)\
                        .subquery()
         db.query(Sensor)\
-          .filter(Sensor.user_id == default_user_id)\
+          .filter(Sensor.user_id == user_id)\
           .filter(~Sensor.id.in_(db.query(recent_ids.c.id)))\
           .delete(synchronize_session=False)
 
     db.commit()
     db.refresh(sensor)
 
+    # 🔥 Kirim notifikasi jika status berubah
     if user.phone_number and new_status != previous_status:
         _send_wa_if_status_changed(
             new_status=new_status,
@@ -574,12 +586,14 @@ def create_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
     return {
         "message": "Data sensor berhasil disimpan",
         "id": sensor.id,
+        "user_id": user_id,
         "status": new_status,
         "recorded_at": sensor.recorded_at.isoformat()
     }
 
 @app.get("/api/sensors/latest")
 def get_latest_sensor(db: Session = Depends(get_db)):
+    # 🔥 SEMUA USER LIHAT DATA USER ID 1
     latest = db.query(Sensor).filter(Sensor.user_id == 1)\
                             .order_by(Sensor.recorded_at.desc()).first()
     if not latest:
@@ -593,7 +607,7 @@ def get_latest_sensor(db: Session = Depends(get_db)):
         }
     return {
         "id": latest.id,
-        "user_id": latest.user_id,
+        "user_id": 1,  # tetap 1
         "temperature": float(latest.temperature) if latest.temperature is not None else 0.0,
         "humidity": float(latest.humidity) if latest.humidity is not None else 0.0,
         "voc": float(latest.voc) if latest.voc is not None else 0.0,
@@ -604,14 +618,13 @@ def get_latest_sensor(db: Session = Depends(get_db)):
 @app.get("/api/sensors/history")
 def get_sensor_history(
     limit: int = Query(12, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db)  # 🔥 TANPA current_user
 ):
-    # 🔥 FIXED: ambil terbaru dulu, lalu reverse → urut waktu lama → baru
+    # 🔥 SEMUA USER LIHAT DATA USER ID 1
     data = (
         db.query(Sensor)
-        .filter(Sensor.user_id == current_user.id)
-        .order_by(Sensor.recorded_at.desc())  # DESC
+        .filter(Sensor.user_id == 1)
+        .order_by(Sensor.recorded_at.desc())
         .limit(limit)
         .all()
     )[::-1]  # reverse → ASC

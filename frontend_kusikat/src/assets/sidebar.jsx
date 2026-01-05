@@ -21,8 +21,8 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, activeMenu, setActiveMenu })
       >
         <div className="flex flex-col h-full p-6">
           <div className="flex items-center gap-3 mb-12 animate-fade-in">
-            <div className="w-12 h-12 rounded-lg overflow-hidden shadow-lg bg-white flex items-center justify-center transform hover:scale-110 transition-transform duration-300">
-              <img src={logo} alt="Logo Kusikat" className="w-10 h-10 object-contain" />
+            <div className="w-8 h-14 rounded-lg overflow-hidden shadow-lg bg-white flex items-center justify-center transform hover:scale-110 transition-transform duration-300">
+              <img src={logo} alt="ResQ Frezee" className="w-full h-full object-cover p-1" />
             </div>
             <div>
               <h1 className="text-white text-xl font-bold">ResQ</h1>

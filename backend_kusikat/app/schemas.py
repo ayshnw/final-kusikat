@@ -79,9 +79,7 @@ class SensorData(BaseModel):
         pattern=r"^(?i)(segar|mulai layu|hampir busuk|busuk)$"
     )
     recorded_at: Optional[datetime] = None
-
     model_config = {"from_attributes": True}
-
 
 class SensorDataCreate(BaseModel):
     temperature: float = Field(..., ge=-20, le=60)

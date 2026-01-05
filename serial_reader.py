@@ -1,4 +1,3 @@
-# serial_reader.py
 import serial
 import json
 import requests
@@ -9,6 +8,17 @@ import sys
 SERIAL_PORT = "COM7"        # GANTI SESUAI PORT ESP32 KAMU
 BAUD_RATE = 115200
 FASTAPI_URL = "http://localhost:8000/api/sensors/"
+
+def calculate_status(voc: float) -> str:
+    """Hitung status sesuai logika backend"""
+    if voc < 50:
+        return "segar"
+    elif voc < 150:
+        return "mulai_layu"
+    elif voc < 400:
+        return "hampir_busuk"
+    else:
+        return "busuk"
 
 def main():
     try:
@@ -26,6 +36,10 @@ def main():
 
                     # Validasi minimal
                     if all(k in data for k in ['temperature', 'humidity', 'voc']):
+                        # 🔥 HITUNG & TAMBAHKAN status
+                        data["status"] = calculate_status(data["voc"])
+                        print("🧠 Status dihitung:", data["status"])
+
                         # Kirim ke FastAPI
                         resp = requests.post(FASTAPI_URL, json=data, timeout=5)
                         print("📤 Status:", resp.status_code, resp.json())
